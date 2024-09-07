@@ -61,7 +61,7 @@ if __name__ == '__main__':
 
     if dataset_name == 'sequential_mnist':
         data = SequentialMNIST()
-        dataset = torch.utils.data.DataLoader(data, batch_size=1, shuffle=True)
+        dataset = torch.utils.data.DataLoader(data, batch_size=batch_size, shuffle=True)
     if training_method_name == 'ridge':
         training_method = RidgeRegression(device)
     if model_name == 'esn':

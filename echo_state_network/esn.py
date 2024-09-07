@@ -88,7 +88,7 @@ class ReservoirCell(torch.nn.Module):
             self.bias = torch.nn.Parameter(self.bias, requires_grad=False)
 
         self.non_linearity = non_linearity
-        self.state = torch.zeros(self.recurrent_units, dtype=torch.float32, requires_grad=False)
+        self.state = None
 
     def forward(self, xt) -> torch.FloatTensor:
 
@@ -97,8 +97,9 @@ class ReservoirCell(torch.nn.Module):
         :param xt: The input at time t.
         """
 
-        if self.state.device != xt.device:
-            self.state = self.state.to(xt.device)
+        if self.state is None:
+            self.state = (torch.zeros((xt.shape[0], self.recurrent_units), dtype=torch.float32, requires_grad=False)
+                          .to(xt.device))
 
         input_part = torch.matmul(xt, self.input_kernel)
         state_part = torch.matmul(self.state, self.recurrent_kernel)
@@ -159,14 +160,14 @@ class ReservoirLayer(torch.nn.Module):
     def forward(self, x) -> torch.Tensor:
         """ Computes the output of the cell given the input and previous state.
 
-        :param x: The input time series (batched or not)
+        :param x: The input time series
 
         :return: Hidden states for each time step
         """
 
         hs = torch.empty((x.shape[0], x.shape[1], self.net.state_size), device=x.device)
         for t in range(x.shape[1]):
-            xt = x[:, t]
+            xt = x[:, t].unsqueeze(1) if x.dim() == 2 else x[:, t]
             hs[:, t, :] = self.net(xt)
         return hs
 
