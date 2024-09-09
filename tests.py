@@ -1,12 +1,16 @@
 import torch
+import numpy as np
 
 from argparse import ArgumentParser
 
-from echo_state_network import train_esn, EchoStateNetwork
+from networkx.utils import argmap
+from sklearn.linear_model import RidgeClassifier
+from tqdm import tqdm
+from triton.runtime import driver
 
+from echo_state_network import EchoStateNetwork
 from datasets import SequentialMNIST
 
-from training_method import RidgeRegression
 
 if __name__ == '__main__':
 
@@ -23,8 +27,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--dataset', type=str, default='sequential_mnist', help='Dataset to use')
     parser.add_argument('--model', type=str, default='esn', help='Model to use')
-    parser.add_argument('--batch', type=int, default=1, help='Batch size')
-    parser.add_argument('--training_method', type=str, default='ridge', help='Training method to use')
+    parser.add_argument('--batch', type=int, default=1, help='batch size')
     parser.add_argument('--input_units', type=int, default=1, help='Number of input units')
     parser.add_argument('--recurrent_units', type=int, default=1, help='Number of recurrent units')
     parser.add_argument('--input_scaling', type=float, default=1.0, help='Input scaling')
@@ -38,6 +41,9 @@ if __name__ == '__main__':
     parser.add_argument('--effective_rescaling', type=bool, default=True,
                         help='Whether to use effective rescaling or not')
     parser.add_argument('--bias_scaling', type=float, default=None, help='Bias scaling')
+    parser.add_argument('--alpha', type=float, default=1.0, help='Alpha value for Ridge Regression')
+    parser.add_argument('--max_iter', type=int, default=1000, help='Maximum number of iterations for Ridge Regression')
+    parser.add_argument('--initial_transients', type=int, default=1, help='Number of initial transients')
 
     args = parser.parse_args()
 
@@ -45,7 +51,6 @@ if __name__ == '__main__':
     dataset_name = args.dataset
     model_name = args.model
     batch_size = args.batch
-    training_method_name = args.training_method
     input_units = args.input_units
     recurrent_units = args.recurrent_units
     input_scaling = args.input_scaling
@@ -58,15 +63,60 @@ if __name__ == '__main__':
     non_linearity = args.non_linearity
     effective_rescaling = args.effective_rescaling
     bias_scaling = args.bias_scaling
+    alpha = args.alpha
+    max_iter = args.max_iter
+    initial_transients = args.initial_transients
 
+    trainer = RidgeClassifier(alpha=alpha, max_iter=max_iter)
+
+    # choose model
+    if model_name == 'esn':
+        model = EchoStateNetwork(initial_transients, input_units, recurrent_units, bias_scaling=bias_scaling,
+                                 input_scaling=input_scaling,
+                                 spectral_radius=spectral_radius,
+                                 leaky_rate=leaky_rate,
+                                 input_connectivity=input_connectivity,
+                                 recurrent_connectivity=recurrent_connectivity,
+                                 bias=bias,
+                                 distribution=distribution,
+                                 non_linearity=non_linearity,
+                                 effective_rescaling=effective_rescaling).to(device)
+
+    # choose a task
     if dataset_name == 'sequential_mnist':
         data = SequentialMNIST()
-        dataset = torch.utils.data.DataLoader(data, batch_size=batch_size, shuffle=True)
-    if training_method_name == 'ridge':
-        training_method = RidgeRegression(device)
-    if model_name == 'esn':
-        model = train_esn(device, dataset, training_method, input_units, recurrent_units, input_scaling=input_scaling,
-                          spectral_radius=spectral_radius, leaky_rate=leaky_rate, input_connectivity=input_connectivity,
-                          recurrent_connectivity=recurrent_connectivity, bias=bias, distribution=distribution,
-                          non_linearity=non_linearity, effective_rescaling=effective_rescaling,
-                          bias_scaling=bias_scaling)
+        training_dataset = torch.utils.data.DataLoader(data, batch_size=batch_size, shuffle=True, drop_last=True)
+
+        with torch.no_grad():
+            states, ys = [], []
+            for i, (x, y) in enumerate(tqdm(training_dataset, desc="Training Progress")):
+                x, y = x.to(device), y.to(device)
+                state = model(x)
+                states.append(state.cpu().numpy())
+                ys.append(y.cpu().numpy())
+            # Concatenate the states and targets along the batch dimension
+            states = np.concatenate(states, axis=0)
+            ys = np.concatenate(ys, axis=0)
+
+            # Flatten the states tensor to combine time series length and batch dimensions
+            states = states.reshape(-1, states.shape[-1])
+            # Repeat the targets to match the number of time steps
+            ys = np.repeat(ys, states.shape[0] // ys.shape[0])
+
+            trainer.fit(states, ys)
+            model.initialize_readout_weights(torch.tensor(trainer.coef_, dtype=torch.float32, device=device).T)
+
+        data = SequentialMNIST(training=False)
+        testing_dataset = torch.utils.data.DataLoader(data, batch_size=batch_size, shuffle=False, drop_last=True)
+
+        with torch.no_grad():
+            predictions, targets = [], []
+            for i, (x, y) in enumerate(tqdm(testing_dataset, desc="Testing Progress")):
+                x, y = x.to(device), y.to(device)
+                prediction = model.predict(x)
+                predictions.append(prediction.cpu().numpy())
+                targets.append(y.cpu().numpy())
+            predictions = np.concatenate(predictions, axis=0)
+            targets = np.concatenate(targets, axis=0)
+            accuracy = (np.argmax(predictions, axis=1) == targets).mean() * 100
+            print(f"Accuracy: {accuracy}%")

@@ -5,7 +5,6 @@ import numpy as np
 
 from .utils.initialization import (sparse_tensor_init, sparse_recurrent_tensor_init, spectral_norm_scaling,
                                    sparse_eye_init, fast_spectral_rescaling)
-from training_method import TrainingMethod
 
 
 class ReservoirCell(torch.nn.Module):
@@ -90,6 +89,9 @@ class ReservoirCell(torch.nn.Module):
         self.non_linearity = non_linearity
         self.state = None
 
+    def reset_state(self):
+        self.state = None
+
     def forward(self, xt) -> torch.FloatTensor:
 
         """ Computes the output of the cell given the input and previous state.
@@ -116,7 +118,7 @@ class ReservoirCell(torch.nn.Module):
 
 
 class ReservoirLayer(torch.nn.Module):
-    def __init__(self, input_units: int, recurrent_units: int, *,
+    def __init__(self, initial_transients: int, input_units: int, recurrent_units: int, *,
                  input_scaling: float = 1.0,
                  spectral_radius: float = 0.99,
                  leaky_rate: float = 1.0,
@@ -144,6 +146,7 @@ class ReservoirLayer(torch.nn.Module):
         :param spectral_radius: max abs eigenvalue of the recurrent matrix
         """
         super().__init__()
+        self.initial_transients = initial_transients
         self.net = ReservoirCell(input_units,
                                  recurrent_units,
                                  input_scaling=input_scaling,
@@ -165,15 +168,19 @@ class ReservoirLayer(torch.nn.Module):
         :return: Hidden states for each time step
         """
 
-        hs = torch.empty((x.shape[0], x.shape[1], self.net.state_size), device=x.device)
+        states = torch.empty((x.shape[0], 0, self.net.recurrent_units), dtype=torch.float32).to(x.device)
         for t in range(x.shape[1]):
             xt = x[:, t].unsqueeze(1) if x.dim() == 2 else x[:, t]
-            hs[:, t, :] = self.net(xt)
-        return hs
+            state = self.net(xt)
+            state = state.unsqueeze(1)
+            states = torch.cat((states, state), dim=1)
+        states = states[:, self.initial_transients:, :]
+        return states
 
 
 class EchoStateNetwork(torch.nn.Module):
-    def __init__(self, input_units: int, recurrent_units: int, *args, bias_scaling: float | None,
+    def __init__(self, initial_transients: int, input_units: int, recurrent_units: int, *args,
+                 bias_scaling: float | None,
                  input_scaling: float = 1.0, spectral_radius: float = 0.99, leaky_rate: float = 1.0,
                  input_connectivity: int = 1, recurrent_connectivity: int = 1, bias: bool = True,
                  distribution: str = 'uniform', non_linearity: str = 'tanh', effective_rescaling: bool = True,
@@ -181,7 +188,7 @@ class EchoStateNetwork(torch.nn.Module):
         """ Echo State Network model."""
 
         super().__init__(*args, **kwargs)
-        self.reservoir = ReservoirLayer(input_units, recurrent_units,
+        self.reservoir = ReservoirLayer(initial_transients, input_units, recurrent_units,
                                         input_scaling=input_scaling,
                                         spectral_radius=spectral_radius,
                                         leaky_rate=leaky_rate,
@@ -199,7 +206,9 @@ class EchoStateNetwork(torch.nn.Module):
 
         :param readout_weights: The readout weights to be used.
         """
+
         self.readout_weights = torch.nn.Parameter(readout_weights, requires_grad=False)
+        self.reservoir.net.reset_state()
 
     def forward(self, x):
         """ Computes the output of the network given the input.
@@ -221,4 +230,5 @@ class EchoStateNetwork(torch.nn.Module):
 
         if self.readout_weights is None:
             raise RuntimeError("Readout weights not initialized. Please train the network")
-        return torch.matmul(self.reservoir(x), self.readout_weights)
+        self.reservoir(x)
+        return torch.matmul(self.reservoir.net.state, self.readout_weights)
