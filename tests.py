@@ -5,13 +5,15 @@ import numpy as np
 
 from argparse import ArgumentParser
 
+from numpy import number
+from numpy.ma.core import concatenate
 from sklearn.linear_model import RidgeClassifier
 from sklearn.preprocessing import StandardScaler
 from sympy.physics.units import action
 from tqdm import tqdm
 from torch.utils.data import random_split
 
-from echo_state_network import EchoStateNetwork
+from echo_state_network import EchoStateNetwork, DeepEchoStateNetwork
 from datasets import SequentialMNIST
 
 
@@ -37,20 +39,24 @@ if __name__ == '__main__':
     parser.add_argument('--input_units', type=int, default=1, help='Number of input units')
     parser.add_argument('--recurrent_units', type=int, default=1, help='Number of recurrent units')
     parser.add_argument('--input_scaling', type=float, default=1.0, help='Input scaling')
+    parser.add_argument('--inter_scaling', type=float, default=1.0, help='Inter reservoirs scaling')
     parser.add_argument('--spectral_radius', type=float, default=0.99, help='Spectral radius')
     parser.add_argument('--leaky_rate', type=float, default=1.0, help='Leaky rate')
     parser.add_argument('--input_connectivity', type=int, default=1, help='Input connectivity')
     parser.add_argument('--recurrent_connectivity', type=int, default=1, help='Recurrent connectivity')
+    parser.add_argument('--inter_connectivity', type=int, default=1, help='Inter reservoirs connectivity')
     parser.add_argument('--bias', action='store_true', help='Whether to use bias or not')
     parser.add_argument('--distribution', type=str, default='uniform', help='Weights distribution to use')
     parser.add_argument('--non_linearity', type=str, default='tanh', help='Non-linearity to use')
-    parser.add_argument('--effective_rescaling', type=bool, default=True,
-                        help='Whether to use effective rescaling or not')
+    parser.add_argument('--effective_rescaling', action='store_true', help='Whether to use effective rescaling or not')
     parser.add_argument('--bias_scaling', type=float, default=None, help='Bias scaling')
     parser.add_argument('--alpha', type=float, default=1.0, help='Alpha value for Ridge Regression')
     parser.add_argument('--max_iter', type=int, default=1000, help='Maximum number of iterations for Ridge Regression')
     parser.add_argument('--initial_transients', type=int, default=1, help='Number of initial transients')
     parser.add_argument('--tolerance', type=float, default=1e-4, help='Tolerance for Ridge Regression')
+    parser.add_argument('--num_layers', type=int, default=1, help='Number of layers for deep reservoirs')
+    parser.add_argument('--concatenate', action='store_true', help='Whether to concatenate the reservoirs or not')
+    parser.add_argument('--circular', action='store_true', help='Whether to use ring topology or not')
 
     args = parser.parse_args()
 
@@ -64,10 +70,12 @@ if __name__ == '__main__':
     input_units = args.input_units
     recurrent_units = args.recurrent_units
     input_scaling = args.input_scaling
+    inter_scaling = args.inter_scaling
     spectral_radius = args.spectral_radius
     leaky_rate = args.leaky_rate
     input_connectivity = args.input_connectivity
     recurrent_connectivity = args.recurrent_connectivity
+    inter_connectivity = args.inter_connectivity
     bias = args.bias
     distribution = args.distribution
     non_linearity = args.non_linearity
@@ -77,6 +85,9 @@ if __name__ == '__main__':
     max_iter = args.max_iter
     initial_transients = args.initial_transients
     tolerance = args.tolerance
+    number_of_layers = args.num_layers
+    concatenate = args.concatenate
+    circular = args.circular
 
     hyperparameters = {'validation_percentage': validation_percentage,
                        'training_batch_size': training_batch_size,
@@ -85,10 +96,12 @@ if __name__ == '__main__':
                        'input_units': input_units,
                        'recurrent_units': recurrent_units,
                        'input_scaling': input_scaling,
+                       'inter_scaling': inter_scaling,
                        'spectral_radius': spectral_radius,
                        'leaky_rate': leaky_rate,
                        'input_connectivity': input_connectivity,
                        'recurrent_connectivity': recurrent_connectivity,
+                       'inter_connectivity': inter_connectivity,
                        'bias': bias,
                        'distribution': distribution,
                        'non_linearity': non_linearity,
@@ -97,7 +110,10 @@ if __name__ == '__main__':
                        'alpha': alpha,
                        'max_iter': max_iter,
                        'initial_transients': initial_transients,
-                       'tolerance': tolerance}
+                       'tolerance': tolerance,
+                       'number_of_layers': number_of_layers,
+                       'concatenate': concatenate,
+                       'circular': circular}
 
     trainer = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
 
@@ -110,11 +126,22 @@ if __name__ == '__main__':
 
     # choose model
     if model_name == 'esn':
-        model = EchoStateNetwork(input_units, recurrent_units, initial_transients=initial_transients,
-                                 input_scaling=input_scaling, spectral_radius=spectral_radius, leaky_rate=leaky_rate,
-                                 input_connectivity=input_connectivity, recurrent_connectivity=recurrent_connectivity,
-                                 bias=bias, distribution=distribution, non_linearity=non_linearity,
-                                 effective_rescaling=effective_rescaling, bias_scaling=bias_scaling).to(device)
+        model = DeepEchoStateNetwork(input_units, recurrent_units,
+                                     number_of_layers=number_of_layers,
+                                     initial_transients=initial_transients,
+                                     input_scaling=input_scaling,
+                                     inter_scaling=inter_scaling,
+                                     spectral_radius=spectral_radius,
+                                     leaky_rate=leaky_rate,
+                                     input_connectivity=input_connectivity,
+                                     recurrent_connectivity=recurrent_connectivity,
+                                     inter_connectivity=inter_connectivity,
+                                     bias=bias,
+                                     distribution=distribution,
+                                     non_linearity=non_linearity,
+                                     effective_rescaling=effective_rescaling,
+                                     bias_scaling=bias_scaling,
+                                     concatenate=concatenate).to(device)
 
     # choose a task
     if dataset_name == 'sequential_mnist':
@@ -132,7 +159,7 @@ if __name__ == '__main__':
             states, ys = [], []
             for i, (x, y) in enumerate(tqdm(training_dataloader, desc="Training Progress")):
                 x, y = x.to(device), y.to(device)
-                state = model(x)[:, -400, :]
+                state = model(x)[0][:, -400, :]
                 states.append(state.cpu().numpy())
                 ys.append(y.cpu().numpy())
             # Concatenate the states and targets along the batch dimension
@@ -159,7 +186,7 @@ if __name__ == '__main__':
             states, targets = [], []
             for i, (x, y) in enumerate(tqdm(validation_dataloader, desc="Validation Progress")):
                 x, y = x.to(device), y.to(device)
-                state = model(x)[:, -400, :]
+                state = model(x)[0][:, -400, :]
                 states.append(state.cpu().numpy())
                 targets.append(y.cpu().numpy())
             states = np.concatenate(states, axis=0)
@@ -199,7 +226,7 @@ if __name__ == '__main__':
         #     states, targets = [], []
         #     for i, (x, y) in enumerate(tqdm(testing_dataset, desc="Testing Progress")):
         #         x, y = x.to(device), y.to(device)
-        #         state = model(x)[:, -300, :]
+        #         state = model(x)[0][:, -400, :]
         #         states.append(state.cpu().numpy())
         #         targets.append(y.cpu().numpy())
         #     states = np.concatenate(states, axis=0)
