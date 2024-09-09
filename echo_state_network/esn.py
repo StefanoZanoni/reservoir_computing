@@ -8,7 +8,10 @@ from .utils.initialization import (sparse_tensor_init, sparse_recurrent_tensor_i
 
 
 class ReservoirCell(torch.nn.Module):
-    def __init__(self, input_units: int, recurrent_units: int, *,
+    def __init__(self,
+                 input_units: int,
+                 recurrent_units: int,
+                 *,
                  input_scaling: float = 1.0,
                  spectral_radius: float = 0.99,
                  leaky_rate: float = 1.0,
@@ -89,9 +92,6 @@ class ReservoirCell(torch.nn.Module):
         self.non_linearity = non_linearity
         self.state = None
 
-    def reset_state(self):
-        self.state = None
-
     def forward(self, xt) -> torch.FloatTensor:
 
         """ Computes the output of the cell given the input and previous state.
@@ -117,8 +117,12 @@ class ReservoirCell(torch.nn.Module):
         return self.state
 
 
-class ReservoirLayer(torch.nn.Module):
-    def __init__(self, initial_transients: int, input_units: int, recurrent_units: int, *,
+class EchoStateNetwork(torch.nn.Module):
+    def __init__(self,
+                 input_units: int,
+                 recurrent_units: int,
+                 *,
+                 initial_transients: int = 0,
                  input_scaling: float = 1.0,
                  spectral_radius: float = 0.99,
                  leaky_rate: float = 1.0,
@@ -129,6 +133,7 @@ class ReservoirLayer(torch.nn.Module):
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
                  bias_scaling: float | None):
+
         """ Shallow reservoir to be used as a Recurrent Neural Network layer.
 
         :param input_units: Number of input recurrent_units.
@@ -161,7 +166,9 @@ class ReservoirLayer(torch.nn.Module):
                                  bias_scaling=bias_scaling)
 
     def forward(self, x) -> torch.Tensor:
-        """ Computes the output of the cell given the input and previous state.
+
+        """
+        Computes the output of the cell given the input and previous state.
 
         :param x: The input time series
 
@@ -177,58 +184,5 @@ class ReservoirLayer(torch.nn.Module):
         states = states[:, self.initial_transients:, :]
         return states
 
-
-class EchoStateNetwork(torch.nn.Module):
-    def __init__(self, initial_transients: int, input_units: int, recurrent_units: int, *args,
-                 bias_scaling: float | None,
-                 input_scaling: float = 1.0, spectral_radius: float = 0.99, leaky_rate: float = 1.0,
-                 input_connectivity: int = 1, recurrent_connectivity: int = 1, bias: bool = True,
-                 distribution: str = 'uniform', non_linearity: str = 'tanh', effective_rescaling: bool = True,
-                 **kwargs):
-        """ Echo State Network model."""
-
-        super().__init__(*args, **kwargs)
-        self.reservoir = ReservoirLayer(initial_transients, input_units, recurrent_units,
-                                        input_scaling=input_scaling,
-                                        spectral_radius=spectral_radius,
-                                        leaky_rate=leaky_rate,
-                                        input_connectivity=input_connectivity,
-                                        recurrent_connectivity=recurrent_connectivity,
-                                        bias=bias,
-                                        distribution=distribution,
-                                        non_linearity=non_linearity,
-                                        effective_rescaling=effective_rescaling,
-                                        bias_scaling=bias_scaling)
-        self.readout_weights = None
-
-    def initialize_readout_weights(self, readout_weights: torch.Tensor) -> None:
-        """ Initializes the readout weights of the network.
-
-        :param readout_weights: The readout weights to be used.
-        """
-
-        self.readout_weights = torch.nn.Parameter(readout_weights, requires_grad=False)
-        self.reservoir.net.reset_state()
-
-    def forward(self, x):
-        """ Computes the output of the network given the input.
-
-        :param x: The input time series (batched or not)
-
-        :return: Hidden states for each time step
-        """
-
-        return self.reservoir(x)
-
-    def predict(self, x):
-        """ Computes the output of the network given the input.
-
-        :param x: The input time series (batched or not)
-
-        :return: Hidden states for each time step
-        """
-
-        if self.readout_weights is None:
-            raise RuntimeError("Readout weights not initialized. Please train the network")
-        self.reservoir(x)
-        return torch.matmul(self.reservoir.net.state, self.readout_weights)
+    def reset_state(self):
+        self.net.state = None
