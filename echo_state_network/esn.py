@@ -1,10 +1,8 @@
 import torch
 import torch.nn
-from numpy import dtype
-import numpy as np
 
-from .utils.initialization import (sparse_tensor_init, sparse_recurrent_tensor_init, spectral_norm_scaling,
-                                   sparse_eye_init, fast_spectral_rescaling, circular_tensor_init)
+from utils.initialization import (sparse_tensor_init, sparse_recurrent_tensor_init, spectral_norm_scaling,
+                                  sparse_eye_init, fast_spectral_rescaling, circular_tensor_init)
 
 
 class ReservoirCell(torch.nn.Module):
