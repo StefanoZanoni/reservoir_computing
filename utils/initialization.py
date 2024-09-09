@@ -83,7 +83,7 @@ def sparse_recurrent_tensor_init(M: int, C: int = 1, distribution: str = 'unifor
     if distribution == 'uniform':
         values = 2 * np.random.rand(M * C).astype('f') - 1
     elif distribution == 'normal':
-        values = np.random.randn(M * C).astype('f') / np.sqrt(C)  # circular law (rescaling)
+        values = np.random.randn(M * C).astype('f') / np.sqrt(C)  # circular_non_linear law (rescaling)
     else:
         raise ValueError("Invalid distribution <<" + distribution + ">>. Only uniform and normal allowed.")
 
@@ -141,11 +141,11 @@ def circular_tensor_init(M: int, distribution: str = 'uniform') -> torch.FloatTe
         indices[i, 1] = (i + 1) % M
 
     if distribution == 'fixed':
-        values = torch.ones(M)
+        values = np.ones(M).astype('f')
     elif distribution == 'uniform':
         values = 2 * np.random.rand(M).astype('f') - 1
     elif distribution == 'normal':
-        values = np.random.randn(M).astype('f') / np.sqrt(1)  # circular law (rescaling)
+        values = np.random.randn(M).astype('f') / np.sqrt(1)  # circular_non_linear law (rescaling)
     else:
         raise ValueError("Invalid distribution <<" + distribution + ">>. Only uniform, normal and fixed allowed.")
 
