@@ -33,7 +33,7 @@ class RMNCell(torch.nn.Module):
         self.input_units = input_units
         if non_linear_units < 1:
             raise ValueError("Recurrent units must be greater than 0.")
-        self.non_linear_units = recurrent_units
+        self.non_linear_units = non_linear_units
         if memory_units < 1:
             raise ValueError("Recurrent units must be greater than 0.")
         self.memory_units = memory_units
@@ -55,12 +55,12 @@ class RMNCell(torch.nn.Module):
             raise ValueError("Non linear connectivity must be in [1, non_linear_units].")
 
         self.input_memory_kernel = sparse_tensor_init(input_units, memory_units,
-                                                      C=input_memory_connectivity) * input_scaling
-        self.input_memory_kernel = torch.nn.Parameter(self.input_kernel, requires_grad=False)
+                                                      C=input_memory_connectivity) * input_memory_scaling
+        self.input_memory_kernel = torch.nn.Parameter(self.input_memory_kernel, requires_grad=False)
 
         self.input_non_linear_kernel = sparse_tensor_init(input_units, non_linear_units,
-                                                          C=input_non_linear_connectivity) * input_scaling
-        self.input_non_linear_kernel = torch.nn.Parameter(self.input_kernel, requires_grad=False)
+                                                          C=input_non_linear_connectivity) * input_non_linear_scaling
+        self.input_non_linear_kernel = torch.nn.Parameter(self.input_non_linear_kernel, requires_grad=False)
 
         if circular_non_linear_kernel:
             W = circular_tensor_init(non_linear_units, distribution=distribution)
@@ -69,13 +69,13 @@ class RMNCell(torch.nn.Module):
 
         # re-scale the weight matrix to control the effective spectral radius of the linearized system
         if effective_rescaling and leaky_rate != 1:
-            I = sparse_eye_init(recurrent_units)
+            I = sparse_eye_init(non_linear_units)
             W = W * leaky_rate + (I * (1 - leaky_rate))
             W = spectral_norm_scaling(W, spectral_radius)
             self.non_linear_kernel = (W + I * (leaky_rate - 1)) * (1 / leaky_rate)
         else:
             if distribution == 'normal':
-                W = spectral_radius * W  # NB: W was already rescaled to 1 (circular law)
+                W = spectral_radius * W  # NB: W was already rescaled to 1 (circular_non_linear law)
             elif distribution == 'uniform' and recurrent_connectivity == recurrent_units:  # fully connected uniform
                 W = fast_spectral_rescaling(W, spectral_radius)
             else:  # sparse connections uniform
@@ -91,15 +91,15 @@ class RMNCell(torch.nn.Module):
 
         if bias:
             if bias_scaling is None:
-                self.bias_scaling = (input_non_linear_scaling + memory_non_linear_scaling) / 2
+                self.bias_scaling = input_non_linear_scaling
             else:
                 self.bias_scaling = bias_scaling
             # uniform init in [-1, +1] times bias_scaling
-            self.bias = (2 * torch.rand(self.recurrent_units) - 1) * self.bias_scaling
+            self.bias = (2 * torch.rand(self.non_linear_units) - 1) * self.bias_scaling
             self.bias = torch.nn.Parameter(self.bias, requires_grad=False)
         else:
             # zero bias
-            self.bias = torch.zeros(self.recurrent_units)
+            self.bias = torch.zeros(self.non_linear_units)
             self.bias = torch.nn.Parameter(self.bias, requires_grad=False)
 
         self.non_linearity = non_linearity
@@ -116,14 +116,14 @@ class RMNCell(torch.nn.Module):
                                                  requires_grad=False).to(xt.device))
 
         # memory part
-        input_memory_part = torch.matmul(self.input_memory_kernel, xt)
-        memory_part = torch.matmul(self.memory_kernel, self.memory_state)
+        input_memory_part = torch.matmul(xt, self.input_memory_kernel)
+        memory_part = torch.matmul(self.memory_state, self.memory_kernel)
         self.memory_state = input_memory_part + memory_part
 
         # non-linear part
-        input_non_linear_part = torch.matmul(self.input_non_linear_kernel, xt)
-        non_linear_part = torch.matmul(self.non_linear_kernel, self.non_linear_state)
-        memory_non_linear_part = torch.matmul(self.memory_non_linear_kernel, self.memory_state)
+        input_non_linear_part = torch.matmul(xt, self.input_non_linear_kernel)
+        non_linear_part = torch.matmul(self.non_linear_state, self.non_linear_kernel)
+        memory_non_linear_part = torch.matmul(self.memory_state, self.memory_non_linear_kernel)
         if self.non_linearity == 'tanh':
             self.non_linear_state = ((1 - self.leaky_rate) * self.non_linear_state + self.leaky_rate *
                                      torch.tanh(non_linear_part + input_non_linear_part + memory_non_linear_part
@@ -159,17 +159,17 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                  circular_non_linear_kernel: bool = True):
         """ Shallow reservoir to be used as a Recurrent Neural Network layer.
 
-        :param input_units: Number of input recurrent_units.
-        :param recurrent_units: Number of recurrent neurons in the reservoir.
+        :param input_units: Number of input non_linear_units.
+        :param non_linear_units: Number of recurrent neurons in the reservoir.
         :param leaky_rate:
-        :param input_connectivity:
-        :param recurrent_connectivity:
+        :param input_non_linear_connectivity:
+        :param non_linear_connectivity:
         :param bias:
         :param distribution:
         :param non_linearity:
         :param input_units: number of input units
-        :param recurrent_units: number of recurrent neurons in the reservoir
-        :param input_scaling: max abs value of a weight in the input-reservoir
+        :param non_linear_units: number of recurrent neurons in the reservoir
+        :param input_non_linear_scaling: max abs value of a weight in the input-reservoir
             connections. Note that whis value also scales the unitary input bias
         :param spectral_radius: max abs eigenvalue of the recurrent matrix
         """
