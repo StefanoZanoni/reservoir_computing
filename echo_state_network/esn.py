@@ -1,5 +1,4 @@
 import torch
-import torch.nn
 
 from utils.initialization import (sparse_tensor_init, sparse_recurrent_tensor_init, spectral_norm_scaling,
                                   sparse_eye_init, fast_spectral_rescaling, circular_tensor_init)
@@ -44,8 +43,8 @@ class ReservoirCell(torch.nn.Module):
             raise ValueError("Leaky rate must be in [0, 1].")
         self.leaky_rate = leaky_rate
         self.input_connectivity = input_connectivity
-        if recurrent_connectivity > recurrent_units:
-            raise ValueError("Recurrent connectivity must be in [0, recurrent_units].")
+        if recurrent_connectivity > recurrent_units or recurrent_connectivity < 1:
+            raise ValueError("Recurrent connectivity must be in [1, recurrent_units].")
         self.recurrent_connectivity = recurrent_connectivity
 
         self.input_kernel = sparse_tensor_init(input_units, recurrent_units, C=input_connectivity) * input_scaling
@@ -173,7 +172,8 @@ class EchoStateNetwork(torch.nn.Module):
         :return: Hidden states for each time step
         """
 
-        states = torch.empty((x.shape[0], 0, self.net.recurrent_units), dtype=torch.float32).to(x.device)
+        states = torch.empty((x.shape[0], 0, self.net.recurrent_units), dtype=torch.float32,
+                             requires_grad=False).to(x.device)
         for t in range(x.shape[1]):
             xt = x[:, t].unsqueeze(1) if x.dim() == 2 else x[:, t]
             state = self.net(xt)

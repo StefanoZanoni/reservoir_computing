@@ -68,8 +68,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
         for _ in range(number_of_layers - 1):
             reservoir_layers.append(
                 EchoStateNetwork(
-                    input_units=last_h_size,
-                    recurrent_units=self.recurrent_units,
+                    last_h_size,
+                    self.recurrent_units,
                     input_scaling=inter_scaling,
                     spectral_radius=spectral_radius,
                     leaky_rate=leaky_rate,

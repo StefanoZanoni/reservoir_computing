@@ -128,6 +128,7 @@ def circular_tensor_init(M: int, distribution: str = 'uniform') -> torch.FloatTe
 
     :param M: Number of hidden units
     :param distribution: Initialisation strategies.
+    :param fixed: If True, all the non-zero elements are set to 1.
     It can be 'uniform' or 'normal'
 
     :return: MxM sparse matrix.
@@ -139,12 +140,14 @@ def circular_tensor_init(M: int, distribution: str = 'uniform') -> torch.FloatTe
         indices[i, 0] = i
         indices[i, 1] = (i + 1) % M
 
-    if distribution == 'uniform':
+    if distribution == 'fixed':
+        values = torch.ones(M)
+    elif distribution == 'uniform':
         values = 2 * np.random.rand(M).astype('f') - 1
     elif distribution == 'normal':
         values = np.random.randn(M).astype('f') / np.sqrt(1)  # circular law (rescaling)
     else:
-        raise ValueError("Invalid distribution <<" + distribution + ">>. Only uniform and normal allowed.")
+        raise ValueError("Invalid distribution <<" + distribution + ">>. Only uniform, normal and fixed allowed.")
 
     values = torch.from_numpy(values)
     return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
