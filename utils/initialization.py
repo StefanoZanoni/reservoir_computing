@@ -4,6 +4,7 @@ from numpy.core.numeric import indices
 
 
 def sparse_eye_init(M: int) -> torch.FloatTensor:
+
     """
     Generates an M x M matrix to be used as sparse identity matrix for the
     re-scaling of the sparse recurrent input_kernel in presence of non-zero leakage.
@@ -16,18 +17,13 @@ def sparse_eye_init(M: int) -> torch.FloatTensor:
     :return: Sparse identity matrix.
     """
 
-    dense_shape = torch.Size([M, M])
-
-    # gives the shape of a ring matrix:
-    indices = torch.zeros((M, 2), dtype=torch.long)
-    for i in range(M):
-        indices[i, :] = i
-    values = torch.ones(M)
-
-    return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
+    indices = torch.arange(M, dtype=torch.long).repeat(2, 1).T
+    values = torch.ones(M, dtype=torch.float32)
+    return torch.sparse_coo_tensor(indices.T, values, (M, M)).to_dense()
 
 
 def sparse_tensor_init(M: int, N: int, C: int = 1) -> torch.FloatTensor:
+
     """
     Generates an M x N matrix to be used as sparse input kernel.
     For each row only C elements are non-zero (i.e., each input dimension is projected only to C neurons).
@@ -37,27 +33,26 @@ def sparse_tensor_init(M: int, N: int, C: int = 1) -> torch.FloatTensor:
     :param N: Number of columns.
     :param C: Number of nonzero elements.
 
-    :return: M x N dense matrix.
+    :return: M x N matrix.
     """
 
     assert N >= C
-    dense_shape = torch.Size([M, N])  # shape of the dense version of the matrix
     indices = torch.zeros((M * C, 2), dtype=torch.long)
-    k = 0
+    values = torch.empty(M * C, dtype=torch.float32)
+
     for i in range(M):
-        # the indices of non-zero elements in the i-th row of the matrix
         idx = np.random.choice(N, size=C, replace=False)
-        for j in range(C):
-            indices[k, 0] = i
-            indices[k, 1] = idx[j]
-            k += 1
-    values = 2 * np.random.rand(M * C).astype('f') - 1
-    values = torch.from_numpy(values)
-    return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
+        indices[i * C:(i + 1) * C, 0] = i
+        indices[i * C:(i + 1) * C, 1] = torch.from_numpy(idx)
+        values[i * C:(i + 1) * C] = torch.from_numpy(2 * np.random.rand(C).astype('f') - 1)
+
+    return torch.sparse_coo_tensor(indices.T, values, (M, N)).to_dense()
 
 
 def sparse_recurrent_tensor_init(M: int, C: int = 1, distribution: str = 'uniform') -> torch.FloatTensor:
-    """ Generates an M x M matrix to be used as sparse recurrent input_kernel.
+
+    """
+    Generates an M x M matrix to be used as sparse recurrent input_kernel.
     For each column only C elements are non-zero (i.e., each recurrent neuron
     takes input from C other recurrent neurons). The non-zero elements are
     generated randomly from a uniform distribution in [-1,1] or from a normal distribution.
@@ -65,89 +60,84 @@ def sparse_recurrent_tensor_init(M: int, C: int = 1, distribution: str = 'unifor
     :param M: Number of hidden units
     :param C: Number of nonzero elements per column
     :param distribution: Initialisation strategy. It can be 'uniform' or 'normal'
-    :return: MxM dense matrix
+
+    :return: M x M matrix
     """
 
     assert M >= C
-    dense_shape = torch.Size([M, M])  # the shape of the dense version of the matrix
     indices = torch.zeros((M * C, 2), dtype=torch.long)
-    k = 0
-    for i in range(M):
-        # the indices of non-zero elements in the i-th column of the matrix
-        idx = np.random.choice(M, size=C, replace=False)
-        for j in range(C):
-            indices[k, 0] = idx[j]
-            indices[k, 1] = i
-            k += 1
+    values = np.random.uniform(-1, 1, M * C).astype('f') if distribution == 'uniform' \
+        else np.random.randn(M * C).astype('f') / np.sqrt(C)
 
-    if distribution == 'uniform':
-        values = 2 * np.random.rand(M * C).astype('f') - 1
-    elif distribution == 'normal':
-        values = np.random.randn(M * C).astype('f') / np.sqrt(C)  # circular_non_linear law (rescaling)
-    else:
-        raise ValueError("Invalid distribution <<" + distribution + ">>. Only uniform and normal allowed.")
+    for i in range(M):
+        idx = np.random.choice(M, size=C, replace=False)
+        indices[i * C:(i + 1) * C, 0] = torch.from_numpy(idx)
+        indices[i * C:(i + 1) * C, 1] = i
 
     values = torch.from_numpy(values)
-    return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
+    return torch.sparse_coo_tensor(indices.T, values, (M, M)).to_dense().float()
 
 
 def spectral_norm_scaling(W: torch.FloatTensor, rho_desired: float) -> torch.FloatTensor:
+
     """ Rescales W to have rho(W) = rho_desired
 
-    :param W:
-    :param rho_desired:
-    :return:
+    :param W: Weight matrix.
+    :param rho_desired: Desired spectral radius.
+
+    :return: W rescaled to have spectral radius equal to rho_desired.
     """
-    e, _ = np.linalg.eig(W.cpu())
-    rho_curr = max(abs(e))
+
+    e = torch.linalg.eigvals(W)
+    rho_curr = torch.max(torch.abs(e)).item()
     return W * (rho_desired / rho_curr)
 
 
 def fast_spectral_rescaling(W: torch.FloatTensor, rho_desired: float) -> torch.FloatTensor:
-    """ Rescales a W uniformly sampled in (-1,1) to have rho(W) = rho_desired.
+
+    """
+    Rescales a W uniformly sampled in (-1,1) to have rho(W) = rho_desired.
     This method is fast since we don't need to compute the spectrum of W, which is very slow.
 
     NB: this method works only if W is uniformly sampled in (-1,1).
     In particular, W must be fully connected!
 
-    :param W: must be a square matrix uniformly sampled in (-1,1), fully connected.
-    :param rho_desired:
-    :return:
+    :param W: There Must be a square matrix uniformly sampled in (-1,1), fully connected.
+    :param rho_desired: Desired spectral radius.
+
+    :return: W rescaled to have spectral radius equal to rho_desired.
     """
+
     units = W.shape[0]
-    value = (rho_desired / np.sqrt(units)) * (6 / np.sqrt(12))
-    W = value * W
-    return W
+    value = rho_desired * (6 / (np.sqrt(12 * units)))
+    return W * value
 
 
 def circular_tensor_init(M: int, distribution: str = 'uniform') -> torch.FloatTensor:
+
     """
     Generates an M x M matrix with ring topology.
     Each neuron receives input only from one neuron and propagates its activation only to one other neuron.
-    The non-zero elements are generated randomly from a uniform distribution in [-1,1] or from a normal distribution.
+    The non-zero elements are generated randomly from a uniform distribution in [-1,1], from a normal distribution or
+    are fixed to 1.
 
     :param M: Number of hidden units
     :param distribution: Initialisation strategies.
-    :param fixed: If True, all the non-zero elements are set to 1.
-    It can be 'uniform' or 'normal'
+    It can be 'uniform', 'normal' or 'fixed'.
 
-    :return: MxM sparse matrix.
+    :return: M x M sparse matrix.
     """
 
-    dense_shape = torch.Size([M, M])  # the shape of the dense version of the matrix
-    indices = torch.zeros((M, 2), dtype=torch.long)
-    for i in range(M):
-        indices[i, 0] = i
-        indices[i, 1] = (i + 1) % M
+    dense_shape = (M, M)  # the shape of the dense version of the matrix
+    indices = torch.stack([torch.arange(M), torch.arange(1, M + 1) % M], dim=1)
 
     if distribution == 'fixed':
-        values = np.ones(M).astype('f')
+        values = torch.ones(M, dtype=torch.float32)
     elif distribution == 'uniform':
-        values = 2 * np.random.rand(M).astype('f') - 1
+        values = torch.rand(M, dtype=torch.float32) * 2 - 1
     elif distribution == 'normal':
-        values = np.random.randn(M).astype('f') / np.sqrt(1)  # circular_non_linear law (rescaling)
+        values = torch.randn(M, dtype=torch.float32) / np.sqrt(1)  # circular law (rescaling)
     else:
-        raise ValueError("Invalid distribution <<" + distribution + ">>. Only uniform, normal and fixed allowed.")
+        raise ValueError(f"Invalid distribution <<{distribution}>>. Only uniform, normal and fixed allowed.")
 
-    values = torch.from_numpy(values)
     return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
