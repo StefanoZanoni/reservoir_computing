@@ -80,7 +80,7 @@ class RMNCell(torch.nn.Module):
         else:
             if distribution == 'normal':
                 W = spectral_radius * W  # NB: W was already rescaled to 1 (circular_non_linear law)
-            elif distribution == 'uniform' and recurrent_connectivity == recurrent_units:  # fully connected uniform
+            elif distribution == 'uniform' and non_linear_connectivity == non_linear_units:  # fully connected uniform
                 W = fast_spectral_rescaling(W, spectral_radius)
             else:  # sparse connections uniform
                 W = spectral_norm_scaling(W, spectral_radius)
@@ -110,7 +110,7 @@ class RMNCell(torch.nn.Module):
             self.bias = torch.nn.Parameter(self.bias, requires_grad=False)
 
         self.non_linearity = non_linearity
-        self.non_linearity_function: Callable = torch.tanh if non_linearity == 'tanh' else torch.nn.Identity()
+        self.non_linearity_function: Callable = torch.tanh if non_linearity == 'tanh' else lambda x: x
         self.memory_state = None
         self.non_linear_state = None
 
@@ -125,7 +125,7 @@ class RMNCell(torch.nn.Module):
 
         # memory part
         input_memory_part = torch.matmul(xt, self.input_memory_kernel)  # Vx * x(t)
-        self.memory_state = torch.matmul(self.memory_state, self.memory_kernel)  # Vm * m(t-1)
+        torch.matmul(self.memory_state, self.memory_kernel, out=self.memory_state)  # Vm * m(t-1)
         self.memory_state.add_(input_memory_part)  # m(t) = Vx * x(t) + Vm * m(t-1)
 
         # non-linear part

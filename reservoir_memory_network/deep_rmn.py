@@ -123,7 +123,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         memory_states = []
         memory_states_last = []
 
-        layer_input = x.copy_(x)
+        layer_input = x.clone()
 
         for res_idx, reservoir_layer in enumerate(self.reservoir):
             non_linear_state, memory_state = reservoir_layer(layer_input)
