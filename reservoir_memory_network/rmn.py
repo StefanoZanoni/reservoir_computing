@@ -45,6 +45,7 @@ class RMNCell(torch.nn.Module):
         if leaky_rate > 1 or leaky_rate < 0:
             raise ValueError("Leaky rate must be in [0, 1].")
         self.leaky_rate = leaky_rate
+        self.one_minus_leaky_rate = 1 - leaky_rate
         if input_memory_connectivity > memory_units or input_memory_connectivity < 1:
             raise ValueError("Input to memory connectivity must be in [1, memory_units].")
         self.input_memory_connectivity = input_memory_connectivity
@@ -54,14 +55,17 @@ class RMNCell(torch.nn.Module):
         if non_linear_connectivity > non_linear_units or non_linear_connectivity < 1:
             raise ValueError("Non linear connectivity must be in [1, non_linear_units].")
 
+        # Input to memory reservoir connectivity
         self.input_memory_kernel = sparse_tensor_init(input_units, memory_units,
                                                       C=input_memory_connectivity) * input_memory_scaling
         self.input_memory_kernel = torch.nn.Parameter(self.input_memory_kernel, requires_grad=False)
 
+        # Input to non-linear reservoir connectivity
         self.input_non_linear_kernel = sparse_tensor_init(input_units, non_linear_units,
                                                           C=input_non_linear_connectivity) * input_non_linear_scaling
         self.input_non_linear_kernel = torch.nn.Parameter(self.input_non_linear_kernel, requires_grad=False)
 
+        # Non-linear reservoir connectivity
         if circular_non_linear_kernel:
             W = circular_tensor_init(non_linear_units, distribution=distribution)
         else:
@@ -83,8 +87,11 @@ class RMNCell(torch.nn.Module):
             self.non_linear_kernel = W
         self.non_linear_kernel = torch.nn.Parameter(self.non_linear_kernel, requires_grad=False)
 
+        # Memory reservoir connectivity
         self.memory_kernel = circular_tensor_init(memory_units, distribution='fixed')
         self.memory_kernel = torch.nn.Parameter(self.memory_kernel, requires_grad=False)
+
+        # Memory to non-linear reservoir connectivity
         self.memory_non_linear_kernel = sparse_tensor_init(memory_units, non_linear_units,
                                                            C=memory_non_linear_connectivity) * memory_non_linear_scaling
         self.memory_non_linear_kernel = torch.nn.Parameter(self.memory_non_linear_kernel, requires_grad=False)
@@ -103,34 +110,34 @@ class RMNCell(torch.nn.Module):
             self.bias = torch.nn.Parameter(self.bias, requires_grad=False)
 
         self.non_linearity = non_linearity
+        self.non_linearity_function: Callable = torch.tanh if non_linearity == 'tanh' else torch.nn.Identity()
         self.memory_state = None
         self.non_linear_state = None
 
     def forward(self, xt) -> torch.FloatTensor:
 
         if self.memory_state is None:
-            self.memory_state = (torch.zeros((xt.shape[0], self.memory_units), dtype=torch.float32, requires_grad=False)
-                                 .to(xt.device))
+            self.memory_state = torch.zeros((xt.shape[0], self.memory_units), dtype=torch.float32, device=xt.device,
+                                            requires_grad=False)
         if self.non_linear_state is None:
-            self.non_linear_state = (torch.zeros((xt.shape[0], self.non_linear_units), dtype=torch.float32,
-                                                 requires_grad=False).to(xt.device))
+            self.non_linear_state = torch.zeros((xt.shape[0], self.non_linear_units), dtype=torch.float32,
+                                                device=xt.device, requires_grad=False)
 
         # memory part
-        input_memory_part = torch.matmul(xt, self.input_memory_kernel)
-        memory_part = torch.matmul(self.memory_state, self.memory_kernel)
-        self.memory_state = input_memory_part + memory_part
+        input_memory_part = torch.matmul(xt, self.input_memory_kernel)  # Vx * x(t)
+        self.memory_state = torch.matmul(self.memory_state, self.memory_kernel)  # Vm * m(t-1)
+        self.memory_state.add_(input_memory_part)  # m(t) = Vx * x(t) + Vm * m(t-1)
 
         # non-linear part
-        input_non_linear_part = torch.matmul(xt, self.input_non_linear_kernel)
-        non_linear_part = torch.matmul(self.non_linear_state, self.non_linear_kernel)
-        memory_non_linear_part = torch.matmul(self.memory_state, self.memory_non_linear_kernel)
-        if self.non_linearity == 'tanh':
-            self.non_linear_state = ((1 - self.leaky_rate) * self.non_linear_state + self.leaky_rate *
-                                     torch.tanh(non_linear_part + input_non_linear_part + memory_non_linear_part
-                                                + self.bias))
-        else:
-            self.non_linear_state = ((1 - self.leaky_rate) * self.non_linear_state + self.leaky_rate *
-                                     (non_linear_part + input_non_linear_part + memory_non_linear_part + self.bias))
+        input_non_linear_part = torch.matmul(xt, self.input_non_linear_kernel)  # Wx * x(t)
+        non_linear_part = torch.matmul(self.non_linear_state, self.non_linear_kernel)  # Wh * h(t-1)
+        memory_non_linear_part = torch.matmul(self.memory_state, self.memory_non_linear_kernel)  # Wm * m(t)
+        # Wx * x(t) + Wh * h(t-1) + Wm * m(t) + b
+        combined_input = input_non_linear_part.add_(non_linear_part).add_(memory_non_linear_part).add_(self.bias)
+
+        # h(t) = (1 - alpha) * h(t-1) + alpha * f(Wx * x(t) + Wh * h(t-1) + Wm * m(t) + b)
+        self.non_linear_state.mul_(self.one_minus_leaky_rate).add_(self.leaky_rate *
+                                                                   self.non_linearity_function(combined_input))
 
         return self.non_linear_state, self.memory_state
 
@@ -194,26 +201,24 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                            bias_scaling=bias_scaling,
                            circular_non_linear_kernel=circular_non_linear_kernel)
 
+    import torch
+
     def forward(self, x) -> torch.Tensor:
-        """
-        Computes the output of the cell given the input and previous state.
 
-        :param x: The input time series
+        non_linear_states = torch.empty((x.shape[0], x.shape[1], self.net.non_linear_units), dtype=torch.float32,
+                                        device=x.device, requires_grad=False)
+        memory_states = torch.empty((x.shape[0], x.shape[1], self.net.memory_units), dtype=torch.float32,
+                                    device=x.device, requires_grad=False)
 
-        :return: Hidden states for each time step
-        """
+        is_dim_2 = x.dim() == 2
 
-        non_linear_states = torch.empty((x.shape[0], 0, self.net.non_linear_units), dtype=torch.float32,
-                                        requires_grad=False).to(x.device)
-        memory_states = torch.empty((x.shape[0], 0, self.net.memory_units), dtype=torch.float32,
-                                    requires_grad=False).to(x.device)
-        for t in range(x.shape[1]):
-            xt = x[:, t].unsqueeze(1) if x.dim() == 2 else x[:, t]
-            non_linear_state, memory_state = self.net(xt)
-            non_linear_state = non_linear_state.unsqueeze(1)
-            memory_state = memory_state.unsqueeze(1)
-            non_linear_states = torch.cat((non_linear_states, non_linear_state), dim=1)
-            memory_states = torch.cat((memory_states, memory_state), dim=1)
+        with torch.no_grad():
+            for t in range(x.shape[1]):
+                xt = x[:, t].unsqueeze(1) if is_dim_2 else x[:, t]
+                non_linear_state, memory_state = self.net(xt)
+                non_linear_states[:, t, :].copy_(non_linear_state)
+                memory_states[:, t, :].copy_(memory_state)
+
         non_linear_states = non_linear_states[:, self.initial_transients:, :]
         memory_states = memory_states[:, self.initial_transients:, :]
 
