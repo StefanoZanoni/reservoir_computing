@@ -42,9 +42,10 @@ class ReservoirCell(torch.nn.Module):
         if leaky_rate > 1 or leaky_rate < 0:
             raise ValueError("Leaky rate must be in [0, 1].")
         self.leaky_rate = leaky_rate
+        self.one_minus_leaky_rate = 1 - leaky_rate
         self.input_connectivity = input_connectivity
         if recurrent_connectivity > recurrent_units or recurrent_connectivity < 1:
-            raise ValueError("Recurrent connectivity must be in [1, recurrent_units].")
+            raise ValueError("Recurrent connectivity must be in [1, non_linear_units].")
         self.recurrent_connectivity = recurrent_connectivity
 
         self.input_kernel = sparse_tensor_init(input_units, recurrent_units, C=input_connectivity) * input_scaling
@@ -85,6 +86,7 @@ class ReservoirCell(torch.nn.Module):
             self.bias = torch.nn.Parameter(self.bias, requires_grad=False)
 
         self.non_linearity = non_linearity
+        self.non_linear_function: Callable = torch.tanh if non_linearity == 'tanh' else lambda x: x
         self.state = None
 
     def forward(self, xt) -> torch.FloatTensor:
@@ -95,20 +97,15 @@ class ReservoirCell(torch.nn.Module):
         """
 
         if self.state is None:
-            self.state = (torch.zeros((xt.shape[0], self.recurrent_units), dtype=torch.float32, requires_grad=False)
-                          .to(xt.device))
+            self.state = torch.zeros((xt.shape[0], self.recurrent_units), dtype=torch.float32, requires_grad=False,
+                                     device=xt.device)
 
         input_part = torch.matmul(xt, self.input_kernel)
         state_part = torch.matmul(self.state, self.recurrent_kernel)
+        output = self.non_linear_function(input_part.add_(state_part).add_(self.bias))
 
-        if self.non_linearity == 'identity':
-            output = input_part + self.bias + state_part
-        elif self.non_linearity == 'tanh':
-            output = torch.tanh(input_part + self.bias + state_part)
-        else:
-            raise ValueError("Invalid non linearity <<" + self.non_linearity + ">>. Only tanh and identity allowed.")
+        self.state.mul_(self.one_minus_leaky_rate).add_(output.mul_(self.leaky_rate))
 
-        self.state = self.state * (1 - self.leaky_rate) + output * self.leaky_rate
         return self.state
 
 
@@ -132,7 +129,7 @@ class EchoStateNetwork(torch.nn.Module):
 
         """ Shallow reservoir to be used as a Recurrent Neural Network layer.
 
-        :param input_units: Number of input recurrent_units.
+        :param input_units: Number of input non_linear_units.
         :param recurrent_units: Number of recurrent neurons in the reservoir.
         :param leaky_rate:
         :param input_connectivity:
@@ -141,7 +138,7 @@ class EchoStateNetwork(torch.nn.Module):
         :param distribution:
         :param non_linearity:
         :param input_units: number of input units
-        :param recurrent_units: number of recurrent neurons in the reservoir
+        :param non_linear_units: number of recurrent neurons in the reservoir
         :param input_scaling: max abs value of a weight in the input-reservoir
             connections. Note that whis value also scales the unitary input bias
         :param spectral_radius: max abs eigenvalue of the recurrent matrix
@@ -172,14 +169,19 @@ class EchoStateNetwork(torch.nn.Module):
         :return: Hidden states for each time step
         """
 
-        states = torch.empty((x.shape[0], 0, self.net.recurrent_units), dtype=torch.float32,
-                             requires_grad=False).to(x.device)
-        for t in range(x.shape[1]):
-            xt = x[:, t].unsqueeze(1) if x.dim() == 2 else x[:, t]
-            state = self.net(xt)
-            state = state.unsqueeze(1)
-            states = torch.cat((states, state), dim=1)
+        states = torch.empty((x.shape[0], x.shape[1], self.net.recurrent_units), dtype=torch.float32,
+                             requires_grad=False, device=x.device)
+
+        is_dim_2 = x.dim() == 2
+
+        with torch.no_grad():
+            for t in range(x.shape[1]):
+                xt = x[:, t].unsqueeze(1) if is_dim_2 else x[:, t]
+                state = self.net(xt)
+                states[:, t, :].copy_(state)
+
         states = states[:, self.initial_transients:, :]
+
         return states
 
     def reset_state(self):

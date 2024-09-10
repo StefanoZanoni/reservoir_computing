@@ -34,7 +34,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         # in case in which all the reservoir layers are concatenated, each level
         # contains units/layers neurons. This is done to keep the number of
         # state variables projected to the next layer fixed,
-        # i.e., the number of trainable parameters does not depend on concatenate
+        # i.e., the number of trainable parameters does not depend on concatenate_non_linear
         if concatenate:
             self.recurrent_units = np.int(total_units / number_of_layers)
         else:
@@ -63,7 +63,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
 
         # all the others:
         # last_h_size may be different for the first layer
-        # because of the remainder if concatenate=True
+        # because of the remainder if concatenate_non_linear=True
         last_h_size = self.recurrent_units + total_units % number_of_layers
         for _ in range(number_of_layers - 1):
             reservoir_layers.append(
@@ -100,7 +100,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         # states_last is a list because different layers may have different sizes.
         states_last = []
 
-        layer_input = x.copy_(x)
+        layer_input = x.clone()
 
         for res_idx, reservoir_layer in enumerate(self.reservoir):
             state = reservoir_layer(layer_input)
