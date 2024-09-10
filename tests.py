@@ -27,6 +27,7 @@ if __name__ == '__main__':
     # parse arguments
     parser = ArgumentParser()
 
+    parser.add_argument('--cpu', action='store_true', help='Force to use the CPU')
     parser.add_argument('--dataset', type=str, default='sequential_mnist', help='Dataset to use')
     parser.add_argument('--model', type=str, default='esn', help='Model to use')
     parser.add_argument('--validation_percentage', type=float, default=0.2, help='Validation percentage')
@@ -68,6 +69,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # set arguments
+    cpu = args.cpu
+    if cpu:
+        device = torch.device('cpu')
     dataset_name = args.dataset
     model_name = args.model
     validation_percentage = args.validation_percentage
@@ -224,7 +228,7 @@ if __name__ == '__main__':
             states, ys = [], []
             for i, (x, y) in enumerate(tqdm(training_dataloader, desc="Training Progress")):
                 x, y = x.to(device), y.to(device)
-                state = model(x)[0][:, -400, :]
+                state = model(x)[1][-1]
                 states.append(state.cpu().numpy())
                 ys.append(y.cpu().numpy())
             # Concatenate the states and targets along the batch dimension
@@ -251,7 +255,7 @@ if __name__ == '__main__':
             states, targets = [], []
             for i, (x, y) in enumerate(tqdm(validation_dataloader, desc="Validation Progress")):
                 x, y = x.to(device), y.to(device)
-                state = model(x)[0][:, -400, :]
+                state = model(x)[1][-1]
                 states.append(state.cpu().numpy())
                 targets.append(y.cpu().numpy())
             states = np.concatenate(states, axis=0)
@@ -260,7 +264,7 @@ if __name__ == '__main__':
             # Flatten the states tensor to combine time series length and batch dimensions
             states = states.reshape(-1, states.shape[-1])
             # Repeat the targets to match the number of time steps
-            ys = np.repeat(ys, states.shape[0] // ys.shape[0])
+            targets = np.repeat(targets, states.shape[0] // targets.shape[0])
 
             states = scaler.transform(states)
             accuracy = trainer.score(states, targets) * 100
