@@ -45,8 +45,8 @@ class ReservoirCell(torch.nn.Module):
         if spectral_radius > 1 or spectral_radius < 0:
             raise ValueError("Spectral radius must be in [0, 1].")
         self.spectral_radius = spectral_radius
-        if leaky_rate > 1 or leaky_rate < 0:
-            raise ValueError("Leaky rate must be in [0, 1].")
+        if leaky_rate > 1 or leaky_rate <= 0:
+            raise ValueError("Leaky rate must be in (0, 1].")
         self.leaky_rate = leaky_rate
         self.one_minus_leaky_rate = 1 - leaky_rate
         self.input_connectivity = input_connectivity
