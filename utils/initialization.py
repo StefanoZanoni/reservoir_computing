@@ -124,7 +124,7 @@ def circular_tensor_init(M: int, distribution: str = 'uniform') -> torch.FloatTe
     """
 
     dense_shape = (M, M)  # the shape of the dense version of the matrix
-    indices = torch.stack([torch.arange(M), torch.arange(1, M + 1) % M], dim=1)
+    indices = torch.cat([torch.stack([torch.arange(1, M), torch.arange(M-1)], dim=1), torch.tensor([[0, M-1]])], dim=0)
 
     if distribution == 'fixed':
         values = torch.ones(M, dtype=torch.float32)
