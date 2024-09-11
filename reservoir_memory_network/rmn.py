@@ -7,7 +7,7 @@ from sklearn.linear_model import RidgeClassifier
 from sklearn.preprocessing import StandardScaler
 
 from utils.initialization import (sparse_tensor_init, sparse_recurrent_tensor_init, spectral_norm_scaling,
-                                  sparse_eye_init, fast_spectral_rescaling, circular_tensor_init)
+                                  sparse_eye_init, fast_spectral_rescaling, circular_tensor_init, legendre_tensor_init)
 
 
 class RMNCell(torch.nn.Module):
@@ -35,6 +35,8 @@ class RMNCell(torch.nn.Module):
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
                  recurrent_scaling: float = 1e-2,
+                 legendre: bool = False,
+                 theta: float = 1.0,
                  ) -> None:
 
         super().__init__()
@@ -105,7 +107,11 @@ class RMNCell(torch.nn.Module):
         self.non_linear_kernel = torch.nn.Parameter(self.non_linear_kernel, requires_grad=False)
 
         # Memory reservoir connectivity
-        self.memory_kernel = circular_tensor_init(memory_units, distribution='fixed')
+        if legendre:
+            M = legendre_tensor_init(memory_units, theta)
+            self.memory_kernel = torch.matrix_exp(M)
+        else:
+            self.memory_kernel = circular_tensor_init(memory_units, distribution='fixed')
         self.memory_kernel = torch.nn.Parameter(self.memory_kernel, requires_grad=False)
 
         # Memory to non-linear reservoir connectivity
@@ -211,6 +217,8 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                  alpha: float = 1.0,
                  max_iter: int = 1000,
                  tolerance: float = 1e-4,
+                 legendre: bool = False,
+                 theta: float = 1.0,
                  ) -> None:
 
         super().__init__()
@@ -238,7 +246,10 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                            euler=euler,
                            epsilon=epsilon,
                            gamma=gamma,
-                           recurrent_scaling=recurrent_scaling)
+                           recurrent_scaling=recurrent_scaling,
+                           legendre=legendre,
+                           theta=theta,
+                           )
         if task == 'classification':
             self.readout = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
 

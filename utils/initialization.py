@@ -19,7 +19,7 @@ def sparse_eye_init(M: int) -> torch.FloatTensor:
 
     indices = torch.arange(M, dtype=torch.long).repeat(2, 1).T
     values = torch.ones(M, dtype=torch.float32)
-    return torch.sparse_coo_tensor(indices.T, values, (M, M)).to_dense()
+    return torch.sparse_coo_tensor(indices.T, values, (M, M), dtype=torch.float32).to_dense()
 
 
 def sparse_tensor_init(M: int, N: int, C: int = 1) -> torch.FloatTensor:
@@ -45,7 +45,7 @@ def sparse_tensor_init(M: int, N: int, C: int = 1) -> torch.FloatTensor:
         indices[i * C:(i + 1) * C, 1] = torch.from_numpy(idx)
         values[i * C:(i + 1) * C] = torch.from_numpy(2 * np.random.rand(C).astype('f') - 1)
 
-    return torch.sparse_coo_tensor(indices.T, values, (M, N)).to_dense()
+    return torch.sparse_coo_tensor(indices.T, values, (M, N), dtype=torch.float32).to_dense()
 
 
 def sparse_recurrent_tensor_init(M: int, C: int = 1, distribution: str = 'uniform') -> torch.FloatTensor:
@@ -73,7 +73,7 @@ def sparse_recurrent_tensor_init(M: int, C: int = 1, distribution: str = 'unifor
         indices[i * C:(i + 1) * C, 1] = i
 
     values = torch.from_numpy(values)
-    return torch.sparse_coo_tensor(indices.T, values, (M, M)).to_dense().float()
+    return torch.sparse_coo_tensor(indices.T, values, (M, M), dtype=torch.float32).to_dense()
 
 
 def spectral_norm_scaling(W: torch.FloatTensor, rho_desired: float) -> torch.FloatTensor:
@@ -135,11 +135,10 @@ def circular_tensor_init(M: int, distribution: str = 'uniform') -> torch.FloatTe
     else:
         raise ValueError(f"Invalid distribution <<{distribution}>>. Only uniform, normal and fixed allowed.")
 
-    return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
+    return torch.sparse_coo_tensor(indices.T, values, dense_shape, dtype=torch.float32).to_dense()
 
 
 def skewsymmetric(units: int, scaling: float) -> torch.FloatTensor:
-
     """
     Generate a skewsymmetric matrix.
     """
@@ -147,3 +146,22 @@ def skewsymmetric(units: int, scaling: float) -> torch.FloatTensor:
     W = scaling * (2 * torch.rand(units, units, dtype=torch.float32) - 1)  # uniform in (-recur_scaling, recur_scaling)
     W = W - W.T
     return W
+
+
+def legendre_tensor_init(M: int, theta: float) -> torch.FloatTensor:
+
+    """
+    Generate a dense matrix leveraging the Legendre polynomials.
+
+    :param M: Number of hidden units.
+    :param theta: Scaling factor.
+
+    :return: M x M matrix.
+    """
+
+    indices = torch.cartesian_prod(torch.arange(M), torch.arange(M))
+    values = torch.where(indices[:, 0] < indices[:, 1],
+                         -(2 * indices[:, 0] + 1) / theta,
+                         (2 * indices[:, 0] + 1) / theta * (-1) ** (indices[:, 0] - indices[:, 1] + 1))
+
+    return torch.sparse_coo_tensor(indices.T, values, (M, M), dtype=torch.float32).to_dense()

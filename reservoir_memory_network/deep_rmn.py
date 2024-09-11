@@ -46,6 +46,8 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                  alpha: float = 1.0,
                  max_iter: int = 1000,
                  tolerance: float = 1e-4,
+                 legendre: bool = False,
+                 theta: float = 1.0,
                  ) -> None:
 
         super().__init__()
@@ -101,7 +103,9 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                 recurrent_scaling=recurrent_scaling,
                 alpha=alpha,
                 max_iter=max_iter,
-                tolerance=tolerance
+                tolerance=tolerance,
+                legendre=legendre,
+                theta=theta,
             )
         ]
 
@@ -137,7 +141,9 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                     recurrent_scaling=recurrent_scaling,
                     alpha=alpha,
                     max_iter=max_iter,
-                    tolerance=tolerance
+                    tolerance=tolerance,
+                    legendre=legendre,
+                    theta=theta,
                 )
             )
             last_h_size = self.non_linear_units

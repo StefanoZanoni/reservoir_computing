@@ -63,6 +63,8 @@ if __name__ == '__main__':
     parser.add_argument('--epsilon', type=float, default=1e-3, help='Epsilon value for Euler non linear')
     parser.add_argument('--gamma', type=float, default=1e-3, help='Gamma value for Euler non linear')
     parser.add_argument('--circular_non_linear', action='store_true', help='Whether to use ring topology or not')
+    parser.add_argument('--legendre_memory', action='store_true', help='Whether to use Legendre memory or not')
+    parser.add_argument('--theta', type=float, default=1.0, help='Theta value for Legendre memory')
 
     # connectivity
     parser.add_argument('--input_memory_connectivity', type=int, default=1, help='Input memory connectivity')
@@ -130,6 +132,9 @@ if __name__ == '__main__':
     epsilon = args.epsilon
     gamma = args.gamma
     non_linear_scaling = args.non_linear_scaling
+    legendre_memory = args.legendre_memory
+    theta = args.theta
+
     if dataset_name == 'sequential_mnist':
         task = 'classification'
 
@@ -232,7 +237,9 @@ if __name__ == '__main__':
                            'euler': euler,
                            'epsilon': epsilon,
                            'gamma': gamma,
-                           'non_linear_scaling': non_linear_scaling}
+                           'non_linear_scaling': non_linear_scaling,
+                           'legendre_memory': legendre_memory,
+                           'theta': theta}
         model = DeepReservoirMemoryNetwork(task,
                                            input_units,
                                            non_linear_units,
@@ -258,7 +265,9 @@ if __name__ == '__main__':
                                            circular_non_linear_kernel=circular_non_linear,
                                            alpha=alpha,
                                            max_iter=max_iter,
-                                           tolerance=tolerance,).to(device)
+                                           tolerance=tolerance,
+                                           legendre=legendre_memory,
+                                           theta=theta).to(device)
 
     # choose a task
     if dataset_name == 'sequential_mnist':
