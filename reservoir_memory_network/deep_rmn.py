@@ -1,10 +1,17 @@
 import torch
+import numpy as np
+
+from tqdm import tqdm
+
+from sklearn.linear_model import RidgeClassifier
+from sklearn.preprocessing import StandardScaler
 
 from reservoir_memory_network import ReservoirMemoryNetwork
 
 
 class DeepReservoirMemoryNetwork(torch.nn.Module):
     def __init__(self,
+                 task: str,
                  input_units: int,
                  total_non_linear_units: int,
                  total_memory_units: int,
@@ -31,9 +38,19 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                  bias_scaling: float | None,
                  concatenate_non_linear: bool = False,
                  concatenate_memory: bool = False,
-                 circular_non_linear_kernel: bool = True,):
+                 circular_non_linear_kernel: bool = True,
+                 euler: bool = False,
+                 epsilon: float = 1e-3,
+                 gamma: float = 1e-3,
+                 recurrent_scaling: float = 1e-2,
+                 alpha: float = 1.0,
+                 max_iter: int = 1000,
+                 tolerance: float = 1e-4,
+                 ) -> None:
 
         super().__init__()
+        self.scaler = None
+        self.task = task
         self.number_of_layers = number_of_layers
         self.total_non_linear_units = total_non_linear_units
         self.total_memory_units = total_memory_units
@@ -43,7 +60,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
 
         # In case in which all the reservoir layers are concatenated, each level
         # contains units/layers neurons. This is done to keep the number of
-        # state variables projected to the next layer fixed,
+        # _state variables projected to the next layer fixed,
         # i.e., the number of trainable parameters does not depend on concatenate_non_linear
         if concatenate_non_linear:
             self.non_linear_units = np.int(total_non_linear_units / number_of_layers)
@@ -58,6 +75,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         # the first:
         reservoir_layers = [
             ReservoirMemoryNetwork(
+                task,
                 input_units,
                 self.non_linear_units,
                 self.memory_units,
@@ -76,7 +94,14 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                 non_linearity=non_linearity,
                 effective_rescaling=effective_rescaling,
                 bias_scaling=bias_scaling,
-                circular_non_linear_kernel=circular_non_linear_kernel
+                circular_non_linear_kernel=circular_non_linear_kernel,
+                euler=euler,
+                epsilon=epsilon,
+                gamma=gamma,
+                recurrent_scaling=recurrent_scaling,
+                alpha=alpha,
+                max_iter=max_iter,
+                tolerance=tolerance
             )
         ]
 
@@ -87,6 +112,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         for _ in range(number_of_layers - 1):
             reservoir_layers.append(
                 ReservoirMemoryNetwork(
+                    task,
                     last_h_size,
                     self.non_linear_units,
                     self.memory_units,
@@ -104,18 +130,27 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                     non_linearity=non_linearity,
                     effective_rescaling=effective_rescaling,
                     bias_scaling=bias_scaling,
-                    circular_non_linear_kernel=circular_non_linear_kernel
+                    circular_non_linear_kernel=circular_non_linear_kernel,
+                    euler=euler,
+                    epsilon=epsilon,
+                    gamma=gamma,
+                    recurrent_scaling=recurrent_scaling,
+                    alpha=alpha,
+                    max_iter=max_iter,
+                    tolerance=tolerance
                 )
             )
             last_h_size = self.non_linear_units
         self.reservoir = torch.nn.ModuleList(reservoir_layers)
+        if task == 'classification':
+            self.readout = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> tuple:
         """ Compute the output of the deep reservoir.
 
         :param x: Input tensor
 
-        :return: hidden states, last state
+        :return: hidden states, last _state
         """
 
         non_linear_states = []
@@ -144,6 +179,41 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
 
         return non_linear_states, non_linear_states_last, memory_states, memory_states_last
 
-    def reset_state(self):
+    def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False) -> None:
+        states, ys = [], []
+        for x, y in tqdm(data, desc='Fitting'):
+            x, y = x.to(device), y.to(device)
+            if self.task == 'classification':
+                state = self(x)[1][-1]
+            states.append(state.cpu().numpy())
+            ys.append(y.cpu().numpy())
+        states = np.concatenate(states, axis=0)
+        ys = np.concatenate(ys, axis=0)
+
+        if standardize:
+            self.scaler = StandardScaler().fit(states)
+            states = self.scaler.transform(states)
+
+        self.readout.fit(states, ys)
+
+    def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = True) -> float:
+        states, ys = [], []
+        for x, y in tqdm(data, desc='Scoring'):
+            x, y = x.to(device), y.to(device)
+            if self.task == 'classification':
+                state = self(x)[1][-1]
+            states.append(state.cpu().numpy())
+            ys.append(y.cpu().numpy())
+        states = np.concatenate(states, axis=0)
+        ys = np.concatenate(ys, axis=0)
+
+        if standardize:
+            if self.scaler is None:
+                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+            states = self.scaler.transform(states)
+
+        return self.readout.score(states, ys)
+
+    def reset_state(self) -> None:
         for reservoir in self.reservoir:
             reservoir.reset_state()

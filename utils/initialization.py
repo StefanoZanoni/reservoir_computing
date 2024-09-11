@@ -1,10 +1,10 @@
 import torch
 import numpy as np
 from numpy.core.numeric import indices
+from triton.language import dtype
 
 
 def sparse_eye_init(M: int) -> torch.FloatTensor:
-
     """
     Generates an M x M matrix to be used as sparse identity matrix for the
     re-scaling of the sparse recurrent input_kernel in presence of non-zero leakage.
@@ -23,7 +23,6 @@ def sparse_eye_init(M: int) -> torch.FloatTensor:
 
 
 def sparse_tensor_init(M: int, N: int, C: int = 1) -> torch.FloatTensor:
-
     """
     Generates an M x N matrix to be used as sparse input kernel.
     For each row only C elements are non-zero (i.e., each input dimension is projected only to C neurons).
@@ -50,7 +49,6 @@ def sparse_tensor_init(M: int, N: int, C: int = 1) -> torch.FloatTensor:
 
 
 def sparse_recurrent_tensor_init(M: int, C: int = 1, distribution: str = 'uniform') -> torch.FloatTensor:
-
     """
     Generates an M x M matrix to be used as sparse recurrent input_kernel.
     For each column only C elements are non-zero (i.e., each recurrent neuron
@@ -79,7 +77,6 @@ def sparse_recurrent_tensor_init(M: int, C: int = 1, distribution: str = 'unifor
 
 
 def spectral_norm_scaling(W: torch.FloatTensor, rho_desired: float) -> torch.FloatTensor:
-
     """ Rescales W to have rho(W) = rho_desired
 
     :param W: Weight matrix.
@@ -94,7 +91,6 @@ def spectral_norm_scaling(W: torch.FloatTensor, rho_desired: float) -> torch.Flo
 
 
 def fast_spectral_rescaling(W: torch.FloatTensor, rho_desired: float) -> torch.FloatTensor:
-
     """
     Rescales a W uniformly sampled in (-1,1) to have rho(W) = rho_desired.
     This method is fast since we don't need to compute the spectrum of W, which is very slow.
@@ -114,7 +110,6 @@ def fast_spectral_rescaling(W: torch.FloatTensor, rho_desired: float) -> torch.F
 
 
 def circular_tensor_init(M: int, distribution: str = 'uniform') -> torch.FloatTensor:
-
     """
     Generates an M x M matrix with ring topology.
     Each neuron receives input only from one neuron and propagates its activation only to one other neuron.
@@ -141,3 +136,14 @@ def circular_tensor_init(M: int, distribution: str = 'uniform') -> torch.FloatTe
         raise ValueError(f"Invalid distribution <<{distribution}>>. Only uniform, normal and fixed allowed.")
 
     return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
+
+
+def skewsymmetric(units: int, scaling: float) -> torch.FloatTensor:
+
+    """
+    Generate a skewsymmetric matrix.
+    """
+
+    W = scaling * (2 * torch.rand(units, units, dtype=torch.float32) - 1)  # uniform in (-recur_scaling, recur_scaling)
+    W = W - W.T
+    return W

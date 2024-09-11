@@ -1,5 +1,6 @@
 import os
 import json
+
 import torch
 import numpy as np
 
@@ -7,7 +8,6 @@ from argparse import ArgumentParser
 
 from sklearn.linear_model import RidgeClassifier
 from sklearn.preprocessing import StandardScaler
-from tqdm import tqdm
 from torch.utils.data import random_split
 
 from echo_state_network import DeepEchoStateNetwork
@@ -27,44 +27,63 @@ if __name__ == '__main__':
     # parse arguments
     parser = ArgumentParser()
 
+    # general arguments
     parser.add_argument('--cpu', action='store_true', help='Force to use the CPU')
     parser.add_argument('--dataset', type=str, default='sequential_mnist', help='Dataset to use')
     parser.add_argument('--model', type=str, default='esn', help='Model to use')
+
+    # dataset arguments
     parser.add_argument('--validation_percentage', type=float, default=0.2, help='Validation percentage')
     parser.add_argument('--batch_training', type=int, default=1, help='Training batch size')
     parser.add_argument('--batch_validation', type=int, default=1, help='Validation batch size')
     parser.add_argument('--batch_testing', type=int, default=1, help='Testing batch size')
+
+    # number of units
     parser.add_argument('--input_units', type=int, default=1, help='Number of input units')
     parser.add_argument('--non_linear_units', type=int, default=1, help='Number of non linear units')
     parser.add_argument('--memory_units', type=int, default=1, help='Number of memory units')
+
+    # scaling
+    parser.add_argument('--non_linear_scaling', type=float, default=1e-2, help='non linear scaling for Euler non linear')
     parser.add_argument('--input_memory_scaling', type=float, default=1.0, help='Input memory scaling')
     parser.add_argument('--input_non_linear_scaling', type=float, default=1.0, help='Input non linear scaling')
     parser.add_argument('--memory_non_linear_scaling', type=float, default=1.0, help='Memory non linear scaling')
     parser.add_argument('--inter_non_linear_scaling', type=float, default=1.0, help='Inter non linear scaling')
     parser.add_argument('--inter_memory_scaling', type=float, default=1.0, help='Inter memory scaling')
+    parser.add_argument('--bias_scaling', type=float, default=None, help='Bias scaling')
+
+    # general parameters
     parser.add_argument('--spectral_radius', type=float, default=0.99, help='Spectral radius')
     parser.add_argument('--leaky_rate', type=float, default=1.0, help='Leaky rate')
+    parser.add_argument('--bias', action='store_true', help='Whether to use bias or not')
+    parser.add_argument('--distribution', type=str, default='uniform', help='Weights distribution to use')
+    parser.add_argument('--non_linearity', type=str, default='tanh', help='Non-linearity to use')
+    parser.add_argument('--effective_rescaling', action='store_true', help='Whether to use effective rescaling or not')
+    parser.add_argument('--euler', action='store_true', help='Whether to use Euler non linear or not')
+    parser.add_argument('--epsilon', type=float, default=1e-3, help='Epsilon value for Euler non linear')
+    parser.add_argument('--gamma', type=float, default=1e-3, help='Gamma value for Euler non linear')
+    parser.add_argument('--circular_non_linear', action='store_true', help='Whether to use ring topology or not')
+
+    # connectivity
     parser.add_argument('--input_memory_connectivity', type=int, default=1, help='Input memory connectivity')
     parser.add_argument('--input_non_linear_connectivity', type=int, default=1, help='Input non linear connectivity')
     parser.add_argument('--non_linear_connectivity', type=int, default=1, help='Non linear connectivity')
     parser.add_argument('--memory_non_linear_connectivity', type=int, default=1, help='Memory non linear connectivity')
     parser.add_argument('--inter_non_linear_connectivity', type=int, default=1, help='Inter non linear connectivity')
     parser.add_argument('--inter_memory_connectivity', type=int, default=1, help='Inter memory connectivity')
-    parser.add_argument('--bias', action='store_true', help='Whether to use bias or not')
-    parser.add_argument('--distribution', type=str, default='uniform', help='Weights distribution to use')
-    parser.add_argument('--non_linearity', type=str, default='tanh', help='Non-linearity to use')
-    parser.add_argument('--effective_rescaling', action='store_true', help='Whether to use effective rescaling or not')
-    parser.add_argument('--bias_scaling', type=float, default=None, help='Bias scaling')
+
+    # training
     parser.add_argument('--alpha', type=float, default=1.0, help='Alpha value for Ridge Regression')
     parser.add_argument('--max_iter', type=int, default=1000, help='Maximum number of iterations for Ridge Regression')
     parser.add_argument('--initial_transients', type=int, default=1, help='Number of initial transients')
     parser.add_argument('--tolerance', type=float, default=1e-4, help='Tolerance for Ridge Regression')
+
+    # deep reservoirs
     parser.add_argument('--num_layers', type=int, default=1, help='Number of layers for deep reservoirs')
     parser.add_argument('--concatenate_non_linear', action='store_true',
-                        help='Whether to concatenate_non_linear the non linear or not')
+                        help='Whether to concatenate the non linear or not')
     parser.add_argument('--concatenate_memory', action='store_true',
-                        help='Whether to concatenate_non_linear the memory or not')
-    parser.add_argument('--circular_non_linear', action='store_true', help='Whether to use ring topology or not')
+                        help='Whether to concatenate the memory or not')
 
     args = parser.parse_args()
 
@@ -107,8 +126,14 @@ if __name__ == '__main__':
     concatenate_non_linear = args.concatenate_non_linear
     concatenate_memory = args.concatenate_memory
     circular_non_linear = args.circular_non_linear
+    euler = args.euler
+    epsilon = args.epsilon
+    gamma = args.gamma
+    non_linear_scaling = args.non_linear_scaling
+    if dataset_name == 'sequential_mnist':
+        task = 'classification'
 
-    trainer = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
+    trainer = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance, solver='svd')
 
     if not os.path.exists('./results'):
         os.makedirs('./results')
@@ -143,9 +168,15 @@ if __name__ == '__main__':
                            'tolerance': tolerance,
                            'number_of_layers': number_of_layers,
                            'concatenate_non_linear': concatenate_non_linear,
-                           'circular_non_linear': circular_non_linear}
+                           'circular_non_linear': circular_non_linear,
+                           'euler': euler,
+                           'epsilon': epsilon,
+                           'gamma': gamma,
+                           'non_linear_scaling': non_linear_scaling}
 
-        model = DeepEchoStateNetwork(input_units, non_linear_units,
+        model = DeepEchoStateNetwork(task,
+                                     input_units,
+                                     non_linear_units,
                                      number_of_layers=number_of_layers,
                                      initial_transients=initial_transients,
                                      input_scaling=input_non_linear_scaling,
@@ -160,7 +191,14 @@ if __name__ == '__main__':
                                      non_linearity=non_linearity,
                                      effective_rescaling=effective_rescaling,
                                      bias_scaling=bias_scaling,
-                                     concatenate=concatenate_non_linear).to(device)
+                                     concatenate=concatenate_non_linear,
+                                     euler=euler,
+                                     epsilon=epsilon,
+                                     gamma=gamma,
+                                     recurrent_scaling=non_linear_scaling,
+                                     alpha=alpha,
+                                     max_iter=max_iter,
+                                     tolerance=tolerance).to(device)
     elif model_name == 'rmn':
         hyperparameters = {'validation_percentage': validation_percentage,
                            'training_batch_size': training_batch_size,
@@ -190,8 +228,15 @@ if __name__ == '__main__':
                            'number_of_layers': number_of_layers,
                            'concatenate_non_linear': concatenate_non_linear,
                            'concatenate_memory': concatenate_memory,
-                           'circular_non_linear': circular_non_linear}
-        model = DeepReservoirMemoryNetwork(input_units, non_linear_units, memory_units,
+                           'circular_non_linear': circular_non_linear,
+                           'euler': euler,
+                           'epsilon': epsilon,
+                           'gamma': gamma,
+                           'non_linear_scaling': non_linear_scaling}
+        model = DeepReservoirMemoryNetwork(task,
+                                           input_units,
+                                           non_linear_units,
+                                           memory_units,
                                            number_of_layers=number_of_layers,
                                            initial_transients=initial_transients,
                                            input_memory_scaling=input_memory_scaling,
@@ -210,7 +255,10 @@ if __name__ == '__main__':
                                            bias_scaling=bias_scaling,
                                            concatenate_non_linear=concatenate_non_linear,
                                            concatenate_memory=concatenate_memory,
-                                           circular_non_linear_kernel=circular_non_linear).to(device)
+                                           circular_non_linear_kernel=circular_non_linear,
+                                           alpha=alpha,
+                                           max_iter=max_iter,
+                                           tolerance=tolerance,).to(device)
 
     # choose a task
     if dataset_name == 'sequential_mnist':
@@ -224,91 +272,33 @@ if __name__ == '__main__':
                                                           shuffle=True,
                                                           drop_last=True)
 
-        with torch.no_grad():
-            states, ys = [], []
-            for i, (x, y) in enumerate(tqdm(training_dataloader, desc="Training Progress")):
-                x, y = x.to(device), y.to(device)
-                state = model(x)[1][-1]
-                states.append(state.cpu().numpy())
-                ys.append(y.cpu().numpy())
-            # Concatenate the states and targets along the batch dimension
-            states = np.concatenate(states, axis=0)
-            ys = np.concatenate(ys, axis=0)
+        # Training
+        model.fit(training_dataloader, device, standardize=True)
 
-            # Flatten the states tensor to combine time series length and batch dimensions
-            states = states.reshape(-1, states.shape[-1])
-            # Repeat the targets to match the number of time steps
-            ys = np.repeat(ys, states.shape[0] // ys.shape[0])
-            scaler = StandardScaler().fit(states)
-            states = scaler.transform(states)
-
-            trainer.fit(states, ys)
-
+        # Validation
         validation_dataloader = torch.utils.data.DataLoader(validation_dataset,
                                                             batch_size=validation_batch_size,
                                                             shuffle=True,
                                                             drop_last=True)
-
-        # Validation
         model.reset_state()
-        with torch.no_grad():
-            states, targets = [], []
-            for i, (x, y) in enumerate(tqdm(validation_dataloader, desc="Validation Progress")):
-                x, y = x.to(device), y.to(device)
-                state = model(x)[1][-1]
-                states.append(state.cpu().numpy())
-                targets.append(y.cpu().numpy())
-            states = np.concatenate(states, axis=0)
-            targets = np.concatenate(targets, axis=0)
+        accuracy = model.score(validation_dataloader, device, standardize=True) * 100
 
-            # Flatten the states tensor to combine time series length and batch dimensions
-            states = states.reshape(-1, states.shape[-1])
-            # Repeat the targets to match the number of time steps
-            targets = np.repeat(targets, states.shape[0] // targets.shape[0])
+        try:
+            with open(f'./results/{model_name}/{dataset_name}/score.json', 'r') as f:
+                score = json.load(f)
+        except FileNotFoundError:
+            score = {'validation_accuracy': 0.0}
 
-            states = scaler.transform(states)
-            accuracy = trainer.score(states, targets) * 100
-
-            try:
-                with open(f'./results/{model_name}/{dataset_name}/score.json', 'r') as f:
-                    score = json.load(f)
-            except FileNotFoundError:
-                score = {'validation_accuracy': 0.0}
-
-            if accuracy > score['validation_accuracy']:
-                # Save the hyperparameters and the accuracy
-                score = {'validation_accuracy': accuracy}
-                with open(f'./results/{model_name}/{dataset_name}/hyperparameters.json', 'w') as f:
-                    json.dump(hyperparameters, f, indent=4)
-                with open(f'./results/{model_name}/{dataset_name}/score.json', 'w') as f:
-                    json.dump(score, f)
+        if accuracy > score['validation_accuracy']:
+            # Save the hyperparameters and the accuracy
+            score = {'validation_accuracy': accuracy}
+            with open(f'./results/{model_name}/{dataset_name}/hyperparameters.json', 'w') as f:
+                json.dump(hyperparameters, f, indent=4)
+            with open(f'./results/{model_name}/{dataset_name}/score.json', 'w') as f:
+                json.dump(score, f)
 
         data = SequentialMNIST(training=False, normalize=True)
         testing_dataset = torch.utils.data.DataLoader(data,
                                                       batch_size=testing_batch_size,
                                                       shuffle=True,
                                                       drop_last=True)
-
-        # Testing
-        # model.reset_state()
-        # with torch.no_grad():
-        #     states, targets = [], []
-        #     for i, (x, y) in enumerate(tqdm(testing_dataset, desc="Testing Progress")):
-        #         x, y = x.to(device), y.to(device)
-        #         state = model(x)[0][:, -400, :]
-        #         states.append(state.cpu().numpy())
-        #         targets.append(y.cpu().numpy())
-        #     states = np.concatenate_non_linear(states, axis=0)
-        #     targets = np.concatenate_non_linear(targets, axis=0)
-        #
-        #     # Flatten the states tensor to combine time series length and batch dimensions
-        #     states = states.reshape(-1, states.shape[-1])
-        #     # Repeat the targets to match the number of time steps
-        #     ys = np.repeat(ys, states.shape[0] // ys.shape[0])
-        #
-        #     states = scaler.transform(states)
-        #     accuracy = trainer.score(states, targets) * 100
-        #
-        #     score['test_accuracy'] = accuracy
-        #     with open(f'./results/{model_name}/{dataset_name}/score.json', 'w') as f:
-        #         json.dump(score, f)

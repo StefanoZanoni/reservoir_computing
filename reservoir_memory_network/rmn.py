@@ -1,4 +1,10 @@
 import torch
+import numpy as np
+
+from tqdm import tqdm
+
+from sklearn.linear_model import RidgeClassifier
+from sklearn.preprocessing import StandardScaler
 
 from utils.initialization import (sparse_tensor_init, sparse_recurrent_tensor_init, spectral_norm_scaling,
                                   sparse_eye_init, fast_spectral_rescaling, circular_tensor_init)
@@ -24,7 +30,12 @@ class RMNCell(torch.nn.Module):
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
                  bias_scaling: float | None,
-                 circular_non_linear_kernel: bool = True):
+                 circular_non_linear_kernel: bool = True,
+                 euler: bool = False,
+                 epsilon: float = 1e-3,
+                 gamma: float = 1e-3,
+                 recurrent_scaling: float = 1e-2,
+                 ) -> None:
 
         super().__init__()
 
@@ -65,26 +76,32 @@ class RMNCell(torch.nn.Module):
                                                           C=input_non_linear_connectivity) * input_non_linear_scaling
         self.input_non_linear_kernel = torch.nn.Parameter(self.input_non_linear_kernel, requires_grad=False)
 
-        # Non-linear reservoir connectivity
-        if circular_non_linear_kernel:
-            W = circular_tensor_init(non_linear_units, distribution=distribution)
+        if euler:
+            W = skewsymmetric(non_linear_units, recurrent_scaling)
+            self.non_linear_kernel = W - gamma * torch.eye(non_linear_units)
+            self.epsilon = epsilon
         else:
-            W = sparse_recurrent_tensor_init(non_linear_units, C=non_linear_units, distribution=distribution)
+            # Non-linear reservoir connectivity
+            if circular_non_linear_kernel:
+                W = circular_tensor_init(non_linear_units, distribution=distribution)
+            else:
+                W = sparse_recurrent_tensor_init(non_linear_units, C=non_linear_units, distribution=distribution)
 
-        # re-scale the weight matrix to control the effective spectral radius of the linearized system
-        if effective_rescaling and leaky_rate != 1:
-            I = sparse_eye_init(non_linear_units)
-            W = W * leaky_rate + (I * (1 - leaky_rate))
-            W = spectral_norm_scaling(W, spectral_radius)
-            self.non_linear_kernel = (W + I * (leaky_rate - 1)) * (1 / leaky_rate)
-        else:
-            if distribution == 'normal':
-                W = spectral_radius * W  # NB: W was already rescaled to 1 (circular_non_linear law)
-            elif distribution == 'uniform' and non_linear_connectivity == non_linear_units:  # fully connected uniform
-                W = fast_spectral_rescaling(W, spectral_radius)
-            else:  # sparse connections uniform
+            # re-scale the weight matrix to control the effective spectral radius of the linearized system
+            if effective_rescaling and leaky_rate != 1:
+                I = sparse_eye_init(non_linear_units)
+                W = W * leaky_rate + (I * (1 - leaky_rate))
                 W = spectral_norm_scaling(W, spectral_radius)
-            self.non_linear_kernel = W
+                self.non_linear_kernel = (W + I * (leaky_rate - 1)) * (1 / leaky_rate)
+            else:
+                if distribution == 'normal':
+                    W = spectral_radius * W  # NB: W was already rescaled to 1 (circular_non_linear law)
+                elif distribution == 'uniform' and non_linear_connectivity == non_linear_units:  # fully connected uniform
+                    W = fast_spectral_rescaling(W, spectral_radius)
+                else:  # sparse connections uniform
+                    W = spectral_norm_scaling(W, spectral_radius)
+                self.non_linear_kernel = W
+
         self.non_linear_kernel = torch.nn.Parameter(self.non_linear_kernel, requires_grad=False)
 
         # Memory reservoir connectivity
@@ -110,40 +127,63 @@ class RMNCell(torch.nn.Module):
             self.bias = torch.nn.Parameter(self.bias, requires_grad=False)
 
         self.non_linearity = non_linearity
-        self.non_linearity_function: Callable = torch.tanh if non_linearity == 'tanh' else lambda x: x
-        self.memory_state = None
-        self.non_linear_state = None
+        self._non_linearity_function: Callable = torch.tanh if non_linearity == 'tanh' else lambda x: x
+        self._memory_state = None
+        self._non_linear_state = None
+        self._forward_function: Callable = self._forward_euler if euler else self._forward_leaky_integrator
 
-    def forward(self, xt) -> torch.FloatTensor:
-
-        if self.memory_state is None:
-            self.memory_state = torch.zeros((xt.shape[0], self.memory_units), dtype=torch.float32, device=xt.device,
-                                            requires_grad=False)
-        if self.non_linear_state is None:
-            self.non_linear_state = torch.zeros((xt.shape[0], self.non_linear_units), dtype=torch.float32,
-                                                device=xt.device, requires_grad=False)
-
+    def _forward_leaky_integrator(self, xt: torch.Tensor) -> tuple[torch.FloatTensor, torch.FloatTensor]:
         # memory part
         input_memory_part = torch.matmul(xt, self.input_memory_kernel)  # Vx * x(t)
-        torch.matmul(self.memory_state, self.memory_kernel, out=self.memory_state)  # Vm * m(t-1)
-        self.memory_state.add_(input_memory_part)  # m(t) = Vx * x(t) + Vm * m(t-1)
+        torch.matmul(self._memory_state, self.memory_kernel, out=self._memory_state)  # Vm * m(t-1)
+        self._memory_state.add_(input_memory_part)  # m(t) = Vx * x(t) + Vm * m(t-1)
 
         # non-linear part
         input_non_linear_part = torch.matmul(xt, self.input_non_linear_kernel)  # Wx * x(t)
-        non_linear_part = torch.matmul(self.non_linear_state, self.non_linear_kernel)  # Wh * h(t-1)
-        memory_non_linear_part = torch.matmul(self.memory_state, self.memory_non_linear_kernel)  # Wm * m(t)
+        non_linear_part = torch.matmul(self._non_linear_state, self.non_linear_kernel)  # Wh * h(t-1)
+        memory_non_linear_part = torch.matmul(self._memory_state, self.memory_non_linear_kernel)  # Wm * m(t)
         # Wx * x(t) + Wh * h(t-1) + Wm * m(t) + b
         combined_input = input_non_linear_part.add_(non_linear_part).add_(memory_non_linear_part).add_(self.bias)
 
         # h(t) = (1 - alpha) * h(t-1) + alpha * f(Wx * x(t) + Wh * h(t-1) + Wm * m(t) + b)
-        self.non_linear_state.mul_(self.one_minus_leaky_rate).add_(self.leaky_rate *
-                                                                   self.non_linearity_function(combined_input))
+        self._non_linear_state.mul_(self.one_minus_leaky_rate).add_(self.leaky_rate *
+                                                                    self._non_linearity_function(combined_input))
 
-        return self.non_linear_state, self.memory_state
+        return self._non_linear_state, self._memory_state
+
+    def _forward_euler(self, xt: torch.Tensor) -> tuple[torch.FloatTensor, torch.FloatTensor]:
+        # memory part
+        input_memory_part = torch.matmul(xt, self.input_memory_kernel)  # Vx * x(t)
+        torch.matmul(self._memory_state, self.memory_kernel, out=self._memory_state)  # Vm * m(t-1)
+        self._memory_state.add_(input_memory_part)  # m(t) = Vx * x(t) + Vm * m(t-1)
+
+        # non-linear part
+        input_non_linear_part = torch.matmul(xt, self.input_non_linear_kernel)  # Wx * x(t)
+        non_linear_part = torch.matmul(self._non_linear_state, self.non_linear_kernel)  # Wh * h(t-1)
+        memory_non_linear_part = torch.matmul(self._memory_state, self.memory_non_linear_kernel)  # Wm * m(t)
+        # Wx * x(t) + Wh * h(t-1) + Wm * m(t) + b
+        combined_input = input_non_linear_part.add_(non_linear_part).add_(memory_non_linear_part).add_(self.bias)
+
+        # h(t) = h(t-1) + epsilon * f(Wh * h(t-1) + Wx * x(t) + Wm * m(t) + b)
+        self._non_linear_state.add_(self.epsilon * self._non_linearity_function(combined_input))
+
+        return self._non_linear_state, self._memory_state
+
+    def forward(self, xt: torch.Tensor) -> tuple[torch.FloatTensor, torch.FloatTensor]:
+
+        if self._memory_state is None:
+            self._memory_state = torch.zeros((xt.shape[0], self.memory_units), dtype=torch.float32, device=xt.device,
+                                             requires_grad=False)
+        if self._non_linear_state is None:
+            self._non_linear_state = torch.zeros((xt.shape[0], self.non_linear_units), dtype=torch.float32,
+                                                 device=xt.device, requires_grad=False)
+
+        return self._forward_function(xt)
 
 
 class ReservoirMemoryNetwork(torch.nn.Module):
     def __init__(self,
+                 task: str,
                  input_units: int,
                  non_linear_units: int,
                  memory_units: int,
@@ -163,24 +203,19 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
                  bias_scaling: float | None,
-                 circular_non_linear_kernel: bool = True):
-        """ Shallow reservoir to be used as a Recurrent Neural Network layer.
+                 circular_non_linear_kernel: bool = True,
+                 euler: bool = False,
+                 epsilon: float = 1e-3,
+                 gamma: float = 1e-3,
+                 recurrent_scaling: float = 1e-2,
+                 alpha: float = 1.0,
+                 max_iter: int = 1000,
+                 tolerance: float = 1e-4,
+                 ) -> None:
 
-        :param input_units: Number of input non_linear_units.
-        :param non_linear_units: Number of recurrent neurons in the reservoir.
-        :param leaky_rate:
-        :param input_non_linear_connectivity:
-        :param non_linear_connectivity:
-        :param bias:
-        :param distribution:
-        :param non_linearity:
-        :param input_units: number of input units
-        :param non_linear_units: number of recurrent neurons in the reservoir
-        :param input_non_linear_scaling: max abs value of a weight in the input-reservoir
-            connections. Note that whis value also scales the unitary input bias
-        :param spectral_radius: max abs eigenvalue of the recurrent matrix
-        """
         super().__init__()
+        self.scaler = None
+        self.task = task
         self.initial_transients = initial_transients
         self.net = RMNCell(input_units,
                            non_linear_units,
@@ -199,12 +234,17 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                            non_linearity=non_linearity,
                            effective_rescaling=effective_rescaling,
                            bias_scaling=bias_scaling,
-                           circular_non_linear_kernel=circular_non_linear_kernel)
+                           circular_non_linear_kernel=circular_non_linear_kernel,
+                           euler=euler,
+                           epsilon=epsilon,
+                           gamma=gamma,
+                           recurrent_scaling=recurrent_scaling)
+        if task == 'classification':
+            self.readout = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
 
     import torch
 
-    def forward(self, x) -> torch.Tensor:
-
+    def forward(self, x: torch.Tensor) -> tuple[torch.FloatTensor, torch.FloatTensor]:
         non_linear_states = torch.empty((x.shape[0], x.shape[1], self.net.non_linear_units), dtype=torch.float32,
                                         device=x.device, requires_grad=False)
         memory_states = torch.empty((x.shape[0], x.shape[1], self.net.memory_units), dtype=torch.float32,
@@ -224,6 +264,41 @@ class ReservoirMemoryNetwork(torch.nn.Module):
 
         return non_linear_states, memory_states
 
-    def reset_state(self):
-        self.net.non_linear_state = None
-        self.net.memory_state = None
+    def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False) -> None:
+        states, ys = [], []
+        for x, y in tqdm(data, desc='Fitting'):
+            x, y = x.to(device), y.to(device)
+            if self.task == 'classification':
+                state = self(x)[:, -1, :]
+            states.append(state.cpu().numpy())
+            ys.append(y.cpu().numpy())
+        states = np.concatenate(states, axis=0)
+        ys = np.concatenate(ys, axis=0)
+
+        if standardize:
+            self.scaler = StandardScaler().fit(states)
+            states = self.scaler.transform(states)
+
+        self.readout.fit(states, ys)
+
+    def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False) -> float:
+        states, ys = [], []
+        for x, y in tqdm(data, desc='Scoring'):
+            x, y = x.to(device), y.to(device)
+            if self.task == 'classification':
+                state = self(x)[:, -1, :]
+            states.append(state.cpu().numpy())
+            ys.append(y.cpu().numpy())
+        states = np.concatenate(states, axis=0)
+        ys = np.concatenate(ys, axis=0)
+
+        if standardize:
+            if self.scaler is None:
+                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+            states = self.scaler.transform(states)
+
+        return self.readout.score(states, ys)
+
+    def reset_state(self) -> None:
+        self.net._non_linear_state = None
+        self.net._memory_state = None
