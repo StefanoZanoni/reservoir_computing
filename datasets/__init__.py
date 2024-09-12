@@ -1,5 +1,4 @@
-from .sequential_mnist.dataset import SequentialMNIST
-from .sequential_mnist.generate import main
+from .sequential_mnist.sequential_mnist import SequentialMNIST
+from .memory_capacity.memory_capacity import MemoryCapacity
 
-__all__ = ['SequentialMNIST']
-main()
+__all__ = ['SequentialMNIST', 'MemoryCapacity']
