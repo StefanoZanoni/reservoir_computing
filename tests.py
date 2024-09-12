@@ -271,7 +271,7 @@ if __name__ == '__main__':
 
     # choose a task
     if dataset_name == 'sequential_mnist':
-        data = SequentialMNIST(training=True, normalize=True)
+        data = SequentialMNIST(training=True)
         total_size = len(data)
         val_size = int(0.2 * total_size)
         train_size = total_size - val_size
