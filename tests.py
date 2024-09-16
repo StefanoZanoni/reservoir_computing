@@ -345,8 +345,8 @@ if __name__ == '__main__':
             mc_ks = []
             for k in tqdm(range(max_delay), 'Delay'):
                 k += 1  # k starts from 1
-                training_data = MemoryCapacity(k, training=True, seed=seed)
-                test_data = MemoryCapacity(k, training=False, seed=seed)
+                training_data = MemoryCapacity(k, training=True)
+                test_data = MemoryCapacity(k, training=False)
                 training_dataloader = torch.utils.data.DataLoader(training_data,
                                                                   batch_size=1,
                                                                   shuffle=False,
