@@ -67,6 +67,7 @@ if __name__ == '__main__':
     parser.add_argument('--legendre_memory', action='store_true', help='Whether to use Legendre memory or not')
     parser.add_argument('--theta', type=float, default=1.0, help='Theta value for Legendre memory')
     parser.add_argument('--use_last_state', action='store_true', help='Whether to use just the last state or not')
+    parser.add_argument('--seed', type=int, default=None, help='Seed for the random number generator')
 
     # connectivity
     parser.add_argument('--input_memory_connectivity', type=int, default=1, help='Input memory connectivity')
@@ -137,6 +138,7 @@ if __name__ == '__main__':
     legendre_memory = args.legendre_memory
     theta = args.theta
     use_last_state = args.use_last_state
+    seed = args.seed
 
     if dataset_name == 'sequential_mnist':
         task = 'classification'
@@ -326,8 +328,8 @@ if __name__ == '__main__':
         mcs = []
         for k in range(max_delay):
             k += 1  # k starts from 1
-            training_data = MemoryCapacity(k, training=True)
-            test_data = MemoryCapacity(k, training=False)
+            training_data = MemoryCapacity(k, training=True, seed=seed)
+            test_data = MemoryCapacity(k, training=False, seed=seed)
             training_dataloader = torch.utils.data.DataLoader(training_data,
                                                               batch_size=1,
                                                               shuffle=False,
