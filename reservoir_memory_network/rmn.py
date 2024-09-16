@@ -3,7 +3,7 @@ import numpy as np
 
 from tqdm import tqdm
 
-from sklearn.linear_model import RidgeClassifier
+from sklearn.linear_model import RidgeClassifier, Ridge
 from sklearn.preprocessing import StandardScaler
 
 from utils.initialization import (sparse_tensor_init, sparse_recurrent_tensor_init, spectral_norm_scaling,
@@ -252,6 +252,8 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                            )
         if task == 'classification':
             self.readout = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
+        elif task == 'regression':
+            self.readout = Ridge(alpha=alpha, max_iter=max_iter, tol=tolerance)
 
     import torch
 
@@ -275,16 +277,25 @@ class ReservoirMemoryNetwork(torch.nn.Module):
 
         return non_linear_states, memory_states
 
-    def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False) -> None:
+    def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
+            use_last_state: bool = True) -> None:
         states, ys = [], []
         for x, y in tqdm(data, desc='Fitting'):
             x, y = x.to(device), y.to(device)
-            if self.task == 'classification':
-                state = self(x)[:, -1, :]
+            state = self(x)
+            if use_last_state:
+                state = state[:, -1, :]
             states.append(state.cpu().numpy())
             ys.append(y.cpu().numpy())
         states = np.concatenate(states, axis=0)
         ys = np.concatenate(ys, axis=0)
+
+        if not use_last_state:
+            states = states.reshape(-1, states.shape[2])
+            if len(ys.shape) == 1:
+                ys = np.repeat(ys, states.shape[0] // ys.shape[0], axis=0)
+            else:
+                ys = ys.T
 
         if standardize:
             self.scaler = StandardScaler().fit(states)
@@ -292,16 +303,25 @@ class ReservoirMemoryNetwork(torch.nn.Module):
 
         self.readout.fit(states, ys)
 
-    def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False) -> float:
+    def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
+              use_last_state: bool = True) -> float:
         states, ys = [], []
         for x, y in tqdm(data, desc='Scoring'):
             x, y = x.to(device), y.to(device)
-            if self.task == 'classification':
-                state = self(x)[:, -1, :]
+            state = self(x)
+            if use_last_state:
+                state = state[:, -1, :]
             states.append(state.cpu().numpy())
             ys.append(y.cpu().numpy())
         states = np.concatenate(states, axis=0)
         ys = np.concatenate(ys, axis=0)
+
+        if not use_last_state:
+            states = states.reshape(-1, states.shape[2])
+            if len(ys.shape) == 1:
+                ys = np.repeat(ys, states.shape[0] // ys.shape[0], axis=0)
+            else:
+                ys = ys.T
 
         if standardize:
             if self.scaler is None:
@@ -309,6 +329,27 @@ class ReservoirMemoryNetwork(torch.nn.Module):
             states = self.scaler.transform(states)
 
         return self.readout.score(states, ys)
+
+    def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
+                use_last_state: bool = True) -> np.ndarray:
+        states = []
+        for x, _ in tqdm(data, desc='Predicting'):
+            x = x.to(device)
+            state = self(x)
+            if use_last_state:
+                state = state[:, -1, :]
+            states.append(state.cpu().numpy())
+        states = np.concatenate(states, axis=0)
+
+        if not use_last_state:
+            states = states.reshape(-1, states.shape[2])
+
+        if standardize:
+            if self.scaler is None:
+                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+            states = self.scaler.transform(states)
+
+        return self.readout.predict(states)
 
     def reset_state(self) -> None:
         self.net._non_linear_state = None
