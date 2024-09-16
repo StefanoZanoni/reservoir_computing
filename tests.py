@@ -12,7 +12,7 @@ from torch.utils.data import random_split
 
 from echo_state_network import DeepEchoStateNetwork
 from reservoir_memory_network import DeepReservoirMemoryNetwork
-from datasets import SequentialMNIST
+from datasets import SequentialMNIST, MemoryCapacity
 
 if __name__ == '__main__':
 
@@ -44,7 +44,8 @@ if __name__ == '__main__':
     parser.add_argument('--memory_units', type=int, default=1, help='Number of memory units')
 
     # scaling
-    parser.add_argument('--non_linear_scaling', type=float, default=1e-2, help='non linear scaling for Euler non linear')
+    parser.add_argument('--non_linear_scaling', type=float, default=1e-2,
+                        help='non linear scaling for Euler non linear')
     parser.add_argument('--input_memory_scaling', type=float, default=1.0, help='Input memory scaling')
     parser.add_argument('--input_non_linear_scaling', type=float, default=1.0, help='Input non linear scaling')
     parser.add_argument('--memory_non_linear_scaling', type=float, default=1.0, help='Memory non linear scaling')
@@ -65,6 +66,7 @@ if __name__ == '__main__':
     parser.add_argument('--circular_non_linear', action='store_true', help='Whether to use ring topology or not')
     parser.add_argument('--legendre_memory', action='store_true', help='Whether to use Legendre memory or not')
     parser.add_argument('--theta', type=float, default=1.0, help='Theta value for Legendre memory')
+    parser.add_argument('--use_last_state', action='store_true', help='Whether to use just the last state or not')
 
     # connectivity
     parser.add_argument('--input_memory_connectivity', type=int, default=1, help='Input memory connectivity')
@@ -134,9 +136,12 @@ if __name__ == '__main__':
     non_linear_scaling = args.non_linear_scaling
     legendre_memory = args.legendre_memory
     theta = args.theta
+    use_last_state = args.use_last_state
 
     if dataset_name == 'sequential_mnist':
         task = 'classification'
+    elif dataset_name == 'memory_capacity':
+        task = 'regression'
 
     trainer = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance, solver='svd')
 
@@ -197,6 +202,7 @@ if __name__ == '__main__':
                                      effective_rescaling=effective_rescaling,
                                      bias_scaling=bias_scaling,
                                      concatenate=concatenate_non_linear,
+                                     circular_recurrent_kernel=circular_non_linear,
                                      euler=euler,
                                      epsilon=epsilon,
                                      gamma=gamma,
@@ -282,7 +288,7 @@ if __name__ == '__main__':
                                                           drop_last=True)
 
         # Training
-        model.fit(training_dataloader, device, standardize=True)
+        model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state)
 
         # Validation
         validation_dataloader = torch.utils.data.DataLoader(validation_dataset,
@@ -290,7 +296,7 @@ if __name__ == '__main__':
                                                             shuffle=True,
                                                             drop_last=True)
         model.reset_state()
-        accuracy = model.score(validation_dataloader, device, standardize=True) * 100
+        accuracy = model.score(validation_dataloader, device, standardize=True, use_last_state=use_last_state) * 100
 
         try:
             with open(f'./results/{model_name}/{dataset_name}/score.json', 'r') as f:
@@ -311,3 +317,40 @@ if __name__ == '__main__':
                                                       batch_size=testing_batch_size,
                                                       shuffle=True,
                                                       drop_last=True)
+    elif dataset_name == 'memory_capacity':
+        if model_name == 'esn':
+            max_delay = non_linear_units * 2
+        if model_name == 'rmn':
+            max_delay = memory_units * 2
+
+        mcs = []
+        for k in range(max_delay):
+            k += 1  # k starts from 1
+            training_data = MemoryCapacity(k, training=True)
+            test_data = MemoryCapacity(k, training=False)
+            training_dataloader = torch.utils.data.DataLoader(training_data,
+                                                              batch_size=1,
+                                                              shuffle=False,
+                                                              drop_last=False)
+            test_dataloader = torch.utils.data.DataLoader(test_data,
+                                                          batch_size=1,
+                                                          shuffle=False,
+                                                          drop_last=False)
+            model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state)
+            model.reset_state()
+            predictions = (model.predict(test_dataloader, device, standardize=True, use_last_state=use_last_state)
+                           .reshape(-1))
+            target_mean = test_data.target.mean().cpu().numpy()
+            predictions_mean = predictions.mean()
+            numerator = np.sum((test_data.target.cpu().numpy() - target_mean) * (predictions - predictions_mean)) ** 2
+            denominator_target_t = np.sum((test_data.target.cpu().numpy() - target_mean) ** 2)
+            denominator_prediction_t = np.sum((predictions - predictions_mean) ** 2)
+            mc_k = numerator / (denominator_target_t * denominator_prediction_t)
+            mcs.append(mc_k)
+
+        mc = float(sum(mcs))
+        score = {'memory_capacity': mc}
+        with open(f'./results/{model_name}/{dataset_name}/hyperparameters.json', 'w') as f:
+            json.dump(hyperparameters, f, indent=4)
+        with open(f'./results/{model_name}/{dataset_name}/score.json', 'w') as f:
+            json.dump(score, f, indent=4)
