@@ -197,9 +197,9 @@ class EchoStateNetwork(torch.nn.Module):
         return states
 
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-            use_last_state: bool = True) -> None:
+            use_last_state: bool = True, show_progress_bar: bool | None = True) -> None:
         states, ys = [], []
-        for x, y in tqdm(data, desc='Fitting'):
+        for x, y in tqdm(data, desc='Fitting', disable=not show_progress_bar):
             x, y = x.to(device), y.to(device)
             state = self(x)
             if use_last_state:
@@ -223,9 +223,9 @@ class EchoStateNetwork(torch.nn.Module):
         self.readout.fit(states, ys)
 
     def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-              use_last_state: bool = True) -> float:
+              use_last_state: bool = True, show_progress_bar: bool | None = True) -> float:
         states, ys = [], []
-        for x, y in tqdm(data, desc='Scoring'):
+        for x, y in tqdm(data, desc='Scoring', disable=not show_progress_bar):
             x, y = x.to(device), y.to(device)
             state = self(x)
             if use_last_state:
@@ -250,9 +250,9 @@ class EchoStateNetwork(torch.nn.Module):
         return self.readout.score(states, ys)
 
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-                use_last_state: bool = True) -> np.ndarray:
+                use_last_state: bool = True, show_progress_bar: bool | None = True) -> np.ndarray:
         states = []
-        for x, _ in tqdm(data, desc='Predicting'):
+        for x, _ in tqdm(data, desc='Predicting', disable=not show_progress_bar):
             x = x.to(device)
             state = self(x)
             if use_last_state:

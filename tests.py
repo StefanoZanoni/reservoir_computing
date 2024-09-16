@@ -1,5 +1,6 @@
 import os
 import json
+import random
 
 import torch
 import numpy as np
@@ -9,6 +10,8 @@ from argparse import ArgumentParser
 from sklearn.linear_model import RidgeClassifier
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import random_split
+
+from tqdm import tqdm
 
 from echo_state_network import DeepEchoStateNetwork
 from reservoir_memory_network import DeepReservoirMemoryNetwork
@@ -139,6 +142,18 @@ if __name__ == '__main__':
     theta = args.theta
     use_last_state = args.use_last_state
     seed = args.seed
+
+    if seed:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        if torch.backends.mps.is_available():
+            torch.mps.manual_seed(seed)
 
     if dataset_name == 'sequential_mnist':
         task = 'classification'
@@ -326,32 +341,37 @@ if __name__ == '__main__':
             max_delay = memory_units * 2
 
         mcs = []
-        for k in range(max_delay):
-            k += 1  # k starts from 1
-            training_data = MemoryCapacity(k, training=True, seed=seed)
-            test_data = MemoryCapacity(k, training=False, seed=seed)
-            training_dataloader = torch.utils.data.DataLoader(training_data,
+        for run in range(10):
+            mc_ks = []
+            for k in tqdm(range(max_delay), 'Delay'):
+                k += 1  # k starts from 1
+                training_data = MemoryCapacity(k, training=True, seed=seed)
+                test_data = MemoryCapacity(k, training=False, seed=seed)
+                training_dataloader = torch.utils.data.DataLoader(training_data,
+                                                                  batch_size=1,
+                                                                  shuffle=False,
+                                                                  drop_last=False)
+                test_dataloader = torch.utils.data.DataLoader(test_data,
                                                               batch_size=1,
                                                               shuffle=False,
                                                               drop_last=False)
-            test_dataloader = torch.utils.data.DataLoader(test_data,
-                                                          batch_size=1,
-                                                          shuffle=False,
-                                                          drop_last=False)
-            model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state)
-            model.reset_state()
-            predictions = (model.predict(test_dataloader, device, standardize=True, use_last_state=use_last_state)
-                           .reshape(-1))
-            target_mean = test_data.target.mean().cpu().numpy()
-            predictions_mean = predictions.mean()
-            numerator = np.sum((test_data.target.cpu().numpy() - target_mean) * (predictions - predictions_mean)) ** 2
-            denominator_target_t = np.sum((test_data.target.cpu().numpy() - target_mean) ** 2)
-            denominator_prediction_t = np.sum((predictions - predictions_mean) ** 2)
-            mc_k = numerator / (denominator_target_t * denominator_prediction_t)
-            mcs.append(mc_k)
+                model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state,
+                          show_progress_bar=False)
+                model.reset_state()
+                predictions = (model.predict(test_dataloader, device, standardize=True, use_last_state=use_last_state,
+                                             show_progress_bar=False)).reshape(-1)
+                target_mean = test_data.target.mean().cpu().numpy()
+                predictions_mean = predictions.mean()
+                numerator = np.sum((test_data.target.cpu().numpy() - target_mean) * (predictions - predictions_mean)) ** 2
+                denominator_target_t = np.sum((test_data.target.cpu().numpy() - target_mean) ** 2)
+                denominator_prediction_t = np.sum((predictions - predictions_mean) ** 2)
+                mc_k = numerator / (denominator_target_t * denominator_prediction_t)
+                mc_ks.append(mc_k)
 
-        mc = float(sum(mcs))
-        score = {'memory_capacity': mc}
+            mcs.append(float(sum(mc_ks)))
+
+        score = {'mean_memory_capacity': float(np.mean(mcs)),
+                 'std_memory_capacity': float(np.std(mcs))}
         with open(f'./results/{model_name}/{dataset_name}/hyperparameters.json', 'w') as f:
             json.dump(hyperparameters, f, indent=4)
         with open(f'./results/{model_name}/{dataset_name}/score.json', 'w') as f:
