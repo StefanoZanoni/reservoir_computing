@@ -9,6 +9,7 @@ from argparse import ArgumentParser
 
 from sklearn.linear_model import RidgeClassifier
 from sklearn.preprocessing import StandardScaler
+from sympy.physics.units import action
 from torch.utils.data import random_split
 
 from tqdm import tqdm
@@ -71,6 +72,7 @@ if __name__ == '__main__':
     parser.add_argument('--theta', type=float, default=1.0, help='Theta value for Legendre memory')
     parser.add_argument('--use_last_state', action='store_true', help='Whether to use just the last state or not')
     parser.add_argument('--seed', type=int, default=None, help='Seed for the random number generator')
+    parser.add_argument('--just_memory', action='store_true', help='Whether to use just the memory or not')
 
     # connectivity
     parser.add_argument('--input_memory_connectivity', type=int, default=1, help='Input memory connectivity')
@@ -142,6 +144,7 @@ if __name__ == '__main__':
     theta = args.theta
     use_last_state = args.use_last_state
     seed = args.seed
+    just_memory = args.just_memory
 
     if seed:
         random.seed(seed)
@@ -262,7 +265,8 @@ if __name__ == '__main__':
                            'gamma': gamma,
                            'non_linear_scaling': non_linear_scaling,
                            'legendre_memory': legendre_memory,
-                           'theta': theta}
+                           'theta': theta,
+                           'just_memory': just_memory}
         model = DeepReservoirMemoryNetwork(task,
                                            input_units,
                                            non_linear_units,
@@ -290,7 +294,8 @@ if __name__ == '__main__':
                                            max_iter=max_iter,
                                            tolerance=tolerance,
                                            legendre=legendre_memory,
-                                           theta=theta).to(device)
+                                           theta=theta,
+                                           just_memory=just_memory).to(device)
 
     # choose a task
     if dataset_name == 'sequential_mnist':
