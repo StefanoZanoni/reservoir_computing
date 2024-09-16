@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import Dataset
 
 
-class MC(Dataset):
+class MemoryCapacity(Dataset):
     def __init__(self, k: int, training: bool = True):
         if training:
             sequence_length = 1000 + k
@@ -13,7 +13,7 @@ class MC(Dataset):
         self.target = time_series[:-k]
 
     def __len__(self):
-        return len(self.data)
+        return 1
 
     def __getitem__(self, idx):
-        return self.data[idx], self.target[idx]
+        return self.data, self.target
