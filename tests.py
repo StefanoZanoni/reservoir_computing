@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import csv
 
 import torch
 import numpy as np
@@ -17,6 +18,17 @@ from tqdm import tqdm
 from echo_state_network import DeepEchoStateNetwork
 from reservoir_memory_network import DeepReservoirMemoryNetwork
 from datasets import SequentialMNIST, MemoryCapacity
+
+
+def compute_determination_coefficient(y_true, y_pred):
+    y_true = y_true.cpu().numpy()
+    y_pred = y_pred
+    y_true_mean = np.mean(y_true)
+    numerator = np.sum((y_true - y_true_mean) * (y_pred - y_true_mean)) ** 2
+    denominator_target_t = np.sum((y_true - y_true_mean) ** 2)
+    denominator_prediction_t = np.sum((y_pred - y_true_mean) ** 2)
+    return numerator / (denominator_target_t * denominator_prediction_t)
+
 
 if __name__ == '__main__':
 
@@ -322,17 +334,17 @@ if __name__ == '__main__':
 
         try:
             with open(f'./results/{model_name}/{dataset_name}/score.json', 'r') as f:
-                score = json.load(f)
+                validation_score = json.load(f)
         except FileNotFoundError:
-            score = {'validation_accuracy': 0.0}
+            validation_score = {'validation_accuracy': 0.0}
 
-        if accuracy > score['validation_accuracy']:
+        if accuracy > validation_score['validation_accuracy']:
             # Save the hyperparameters and the accuracy
-            score = {'validation_accuracy': accuracy}
+            validation_score = {'validation_accuracy': accuracy}
             with open(f'./results/{model_name}/{dataset_name}/hyperparameters.json', 'w') as f:
                 json.dump(hyperparameters, f, indent=4)
             with open(f'./results/{model_name}/{dataset_name}/score.json', 'w') as f:
-                json.dump(score, f)
+                json.dump(validation_score, f)
 
         data = SequentialMNIST(training=False, normalize=True)
         testing_dataset = torch.utils.data.DataLoader(data,
@@ -341,45 +353,104 @@ if __name__ == '__main__':
                                                       drop_last=True)
     elif dataset_name == 'memory_capacity':
         if model_name == 'esn':
-            max_delay = non_linear_units * 2
-        if model_name == 'rmn':
-            max_delay = memory_units * 2
+            max_delay = non_linear_units * number_of_layers * 2
+        elif model_name == 'rmn' and not just_memory:
+            max_delay = (memory_units + non_linear_units) * number_of_layers * 2
+        else:
+            max_delay = memory_units * number_of_layers * 2
 
-        mcs = []
-        for run in range(10):
-            mc_ks = []
-            for k in tqdm(range(max_delay), 'Delay'):
+        mcs_validation = []
+        mcs_test = []
+        validation_determination_coefficients = []
+        test_determination_coefficients = []
+        for run in range(3):
+            mc_ks_validation = []
+            mc_ks_test = []
+            for k in tqdm(range(max_delay), 'Delay', disable=True):
                 k += 1  # k starts from 1
                 training_data = MemoryCapacity(k, training=True)
-                training_data.target = training_data.target
+                training_data.target = training_data.target[initial_transients:]
+                validation_data = MemoryCapacity(k, training=False)
+                validation_data.target = validation_data.target[initial_transients:]
                 test_data = MemoryCapacity(k, training=False)
-                test_data.target = test_data.target
+                test_data.target = test_data.target[initial_transients:]
                 training_dataloader = torch.utils.data.DataLoader(training_data,
                                                                   batch_size=1,
                                                                   shuffle=False,
                                                                   drop_last=False)
+                validation_dataloader = torch.utils.data.DataLoader(validation_data,
+                                                                    batch_size=1,
+                                                                    shuffle=False,
+                                                                    drop_last=False)
                 test_dataloader = torch.utils.data.DataLoader(test_data,
                                                               batch_size=1,
                                                               shuffle=False,
                                                               drop_last=False)
+
+                # training
                 model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state,
-                          show_progress_bar=False)
+                          disable_progress_bar=True)
+
+                # validation
                 model.reset_state()
-                predictions = (model.predict(test_dataloader, device, standardize=True, use_last_state=use_last_state,
-                                             show_progress_bar=False)).reshape(-1)
-                target_mean = test_data.target.mean().cpu().numpy()
-                predictions_mean = predictions.mean()
-                numerator = np.sum((test_data.target.cpu().numpy() - target_mean) * (predictions - predictions_mean)) ** 2
-                denominator_target_t = np.sum((test_data.target.cpu().numpy() - target_mean) ** 2)
-                denominator_prediction_t = np.sum((predictions - predictions_mean) ** 2)
-                mc_k = numerator / (denominator_target_t * denominator_prediction_t)
-                mc_ks.append(mc_k)
+                predictions = (
+                    model.predict(validation_dataloader, device, standardize=True,
+                                  use_last_state=use_last_state, disable_progress_bar=True)).reshape(-1)
+                mc_k = compute_determination_coefficient(validation_data.target, predictions)
+                mc_ks_validation.append(mc_k)
 
-            mcs.append(float(sum(mc_ks)))
+                # test
+                model.reset_state()
+                predictions = (
+                    model.predict(test_dataloader, device, standardize=True, use_last_state=use_last_state,
+                                  disable_progress_bar=True)).reshape(-1)
+                mc_k = compute_determination_coefficient(test_data.target, predictions)
+                mc_ks_test.append(mc_k)
 
-        score = {'mean_memory_capacity': float(np.mean(mcs)),
-                 'std_memory_capacity': float(np.std(mcs))}
-        with open(f'./results/{model_name}/{dataset_name}/hyperparameters.json', 'w') as f:
-            json.dump(hyperparameters, f, indent=4)
-        with open(f'./results/{model_name}/{dataset_name}/score.json', 'w') as f:
-            json.dump(score, f, indent=4)
+            mcs_validation.append(float(sum(mc_ks_validation)))
+            mcs_test.append(float(sum(mc_ks_test)))
+
+            validation_determination_coefficients.append(mc_ks_validation)
+            test_determination_coefficients.append(mc_ks_test)
+
+        if model_name == 'esn':
+            results_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/{non_linear_units}/'
+        elif model_name == 'rmn':
+            if just_memory:
+                results_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/{memory_units}/'
+            else:
+                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
+                                f'{memory_units}m_{non_linear_units}nl/')
+
+        if not os.path.exists(results_path):
+            os.makedirs(results_path)
+
+        # try to load the best configuration found so far
+        try:
+            with open(f'{results_path}/validation_score.json', 'r') as f:
+                validation_score = json.load(f)
+        except FileNotFoundError:
+            validation_score = {'mean_memory_capacity': 0.0, 'std_memory_capacity': 0.0}
+
+        # store the best configuration found so far
+        if validation_score['mean_memory_capacity'] < np.mean(mcs_validation):
+            validation_score = {'mean_memory_capacity': np.mean(mcs_validation),
+                                'std_memory_capacity': np.std(mcs_validation)}
+            with open(f'{results_path}/hyperparameters.json', 'w') as f:
+                json.dump(hyperparameters, f, indent=4)
+            with open(f'{results_path}/validation_score.json', 'w') as f:
+                json.dump(validation_score, f, indent=4)
+
+            validation_determination_coefficients = np.mean(validation_determination_coefficients, axis=0)
+            test_determination_coefficients = np.mean(test_determination_coefficients, axis=0)
+            with open(f'{results_path}/determination_coefficients.csv', 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(['Validation Determination Coefficients', 'Test Determination Coefficients'])
+                for val, test in zip(validation_determination_coefficients, test_determination_coefficients):
+                    writer.writerow([val, test])
+
+            test_score = {'mean_memory_capacity': np.mean(mcs_test), 'std_memory_capacity': np.std(mcs_test)}
+
+            # store the test validation_score
+            with open(f'{results_path}/test_score.json', 'w') as f:
+                json.dump(test_score, f, indent=4)
