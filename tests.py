@@ -19,6 +19,10 @@ from echo_state_network import DeepEchoStateNetwork
 from reservoir_memory_network import DeepReservoirMemoryNetwork
 from datasets import SequentialMNIST, MemoryCapacity
 
+torch.set_num_threads(os.cpu_count())
+os.environ['OMP_NUM_THREADS'] = str(os.cpu_count())
+os.environ['MKL_NUM_THREADS'] = str(os.cpu_count())
+
 
 def compute_determination_coefficient(y_true, y_pred):
     y_true = y_true.cpu().numpy()
@@ -105,7 +109,6 @@ if __name__ == '__main__':
     cpu = args.cpu
     if cpu:
         device = torch.device('cpu')
-        torch.set_num_threads(os.cpu_count())
     else:
         if torch.cuda.is_available():
             device = torch.device('cuda')
