@@ -6,9 +6,9 @@ class MemoryCapacity(Dataset):
     def __init__(self, k: int, training: bool = True):
 
         if training:
-            sequence_length = 1000 + k
+            sequence_length = 10000 + k
         else:
-            sequence_length = 200 + k
+            sequence_length = 4000 + k
 
         time_series = 2 * torch.rand(sequence_length) - 1
         self.data = time_series[k:]
