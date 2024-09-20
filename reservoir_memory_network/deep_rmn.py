@@ -202,9 +202,9 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             return None, None, memory_states, memory_states_last
 
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-            use_last_state: bool = True, show_progress_bar: bool | None = True) -> None:
+            use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
         states, ys = [], []
-        for x, y in tqdm(data, desc='Fitting', disable=not show_progress_bar):
+        for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
             state = self(x)[3 if self.just_memory else 1][-1] if use_last_state\
                 else self(x)[2 if self.just_memory else 0]
@@ -227,9 +227,9 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         self.readout.fit(states, ys)
 
     def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-              use_last_state: bool = True, show_progress_bar: bool | None = True) -> float:
+              use_last_state: bool = True, disable_progress_bar: bool = False) -> float:
         states, ys = [], []
-        for x, y in tqdm(data, desc='Scoring', disable=not show_progress_bar):
+        for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
             state = self(x)[3 if self.just_memory else 1][-1] if use_last_state \
                 else self(x)[2 if self.just_memory else 0]
@@ -253,9 +253,9 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         return self.readout.score(states, ys)
 
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-                use_last_state: bool = True, show_progress_bar: bool | None = True) -> np.ndarray:
+                use_last_state: bool = True, disable_progress_bar: bool = False) -> np.ndarray:
         states = []
-        for x, _ in tqdm(data, desc='Predicting', disable=not show_progress_bar):
+        for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
             x = x.to(device)
             state = self(x)[3 if self.just_memory else 1][-1] if use_last_state \
                 else self(x)[2 if self.just_memory else 0]

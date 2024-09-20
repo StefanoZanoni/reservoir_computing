@@ -319,9 +319,9 @@ class ReservoirMemoryNetwork(torch.nn.Module):
             return None, memory_states
 
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-            use_last_state: bool = True, show_progress_bar: bool = True) -> None:
+            use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
         states, ys = [], []
-        for x, y in tqdm(data, desc='Fitting', disable=not show_progress_bar):
+        for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
             state = self(x)[1 if self.just_memory else 0]
             if use_last_state:
@@ -345,10 +345,10 @@ class ReservoirMemoryNetwork(torch.nn.Module):
         self.readout.fit(states, ys)
 
     def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-              use_last_state: bool = True, show_progress_bar: bool = True) \
+              use_last_state: bool = True, disable_progress_bar: bool = False) \
             -> float:
         states, ys = [], []
-        for x, y in tqdm(data, desc='Scoring', disable=not show_progress_bar):
+        for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
             state = self(x)[1 if self.just_memory else 0]
             if use_last_state:
@@ -373,9 +373,9 @@ class ReservoirMemoryNetwork(torch.nn.Module):
         return self.readout.score(states, ys)
 
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-                use_last_state: bool = True, show_progress_bar: bool = True) -> np.ndarray:
+                use_last_state: bool = True, disable_progress_bar: bool = False) -> np.ndarray:
         states = []
-        for x, _ in tqdm(data, desc='Predicting', disable=not show_progress_bar):
+        for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
             x = x.to(device)
             state = self(x)[1 if self.just_memory else 0]
             if use_last_state:
