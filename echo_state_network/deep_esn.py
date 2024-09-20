@@ -80,14 +80,20 @@ class DeepEchoStateNetwork(torch.nn.Module):
                 euler=euler,
                 epsilon=epsilon,
                 gamma=gamma,
-                recurrent_scaling=recurrent_scaling
+                recurrent_scaling=recurrent_scaling,
+                max_iter=max_iter,
+                alpha=alpha,
+                tolerance=tolerance,
             )
         ]
 
         # all the others:
         # last_h_size may be different for the first layer
         # because of the remainder if concatenate_non_linear=True
-        last_h_size = self.recurrent_units + total_units % number_of_layers
+        if total_units != self.recurrent_units:
+            last_h_size = self.recurrent_units + total_units % number_of_layers
+        else:
+            last_h_size = self.recurrent_units
         for _ in range(number_of_layers - 1):
             reservoir_layers.append(
                 EchoStateNetwork(
@@ -108,7 +114,10 @@ class DeepEchoStateNetwork(torch.nn.Module):
                     euler=euler,
                     epsilon=epsilon,
                     gamma=gamma,
-                    recurrent_scaling=recurrent_scaling
+                    recurrent_scaling=recurrent_scaling,
+                    max_iter=max_iter,
+                    alpha=alpha,
+                    tolerance=tolerance,
                 )
             )
             last_h_size = self.recurrent_units

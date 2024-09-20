@@ -105,9 +105,10 @@ class RMNCell(torch.nn.Module):
                     W = spectral_norm_scaling(W, spectral_radius)
                     self.non_linear_kernel = (W + I * (leaky_rate - 1)) * (1 / leaky_rate)
                 else:
-                    if distribution == 'normal':
+                    if distribution == 'normal' and not non_linear_units == 1:
                         W = spectral_radius * W  # NB: W was already rescaled to 1 (circular_non_linear law)
-                    elif distribution == 'uniform' and non_linear_connectivity == non_linear_units:  # fully connected uniform
+                    elif (distribution == 'uniform' and non_linear_connectivity == non_linear_units
+                          and not circular_non_linear_kernel and not non_linear_units == 1):  # fully connected uniform
                         W = fast_spectral_rescaling(W, spectral_radius)
                     else:  # sparse connections uniform
                         W = spectral_norm_scaling(W, spectral_radius)

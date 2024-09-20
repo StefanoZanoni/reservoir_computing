@@ -74,9 +74,10 @@ class ReservoirCell(torch.nn.Module):
                 W = spectral_norm_scaling(W, spectral_radius)
                 self.recurrent_kernel = (W + I * (leaky_rate - 1)) * (1 / leaky_rate)
             else:
-                if distribution == 'normal':
+                if distribution == 'normal' and not recurrent_units == 1:
                     W = spectral_radius * W  # NB: W was already rescaled to 1 (circular law)
-                elif distribution == 'uniform' and recurrent_connectivity == recurrent_units:  # fully connected uniform
+                elif (distribution == 'uniform' and recurrent_connectivity == recurrent_units
+                      and not circular_recurrent_kernel and not recurrent_units == 1):  # fully connected uniform
                     W = fast_spectral_rescaling(W, spectral_radius)
                 else:  # sparse connections uniform
                     W = spectral_norm_scaling(W, spectral_radius)
