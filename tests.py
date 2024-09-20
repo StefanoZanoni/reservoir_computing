@@ -32,14 +32,6 @@ def compute_determination_coefficient(y_true, y_pred):
 
 if __name__ == '__main__':
 
-    # select device
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-    elif torch.backends.mps.is_available():
-        device = torch.device('mps')
-    else:
-        device = torch.device('cpu')
-
     # parse arguments
     parser = ArgumentParser()
 
@@ -109,10 +101,21 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    # set arguments
+    # select device
     cpu = args.cpu
     if cpu:
         device = torch.device('cpu')
+        torch.set_num_threads(os.cpu_count())
+    else:
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+        elif torch.backends.mps.is_available():
+            device = torch.device('mps')
+        else:
+            device = torch.device('cpu')
+            torch.set_num_threads(os.cpu_count())
+
+    # set arguments
     dataset_name = args.dataset
     model_name = args.model
     validation_percentage = args.validation_percentage
