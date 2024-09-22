@@ -156,53 +156,53 @@ class RMNCell(torch.nn.Module):
         else:
             self._forward_function: Callable = self._forward_memory
 
+    @torch.no_grad()
     def _forward_memory(self, xt: torch.Tensor) -> torch.FloatTensor:
 
         # memory part
         input_memory_part = torch.matmul(xt, self.input_memory_kernel)
-        torch.matmul(self._memory_state, self.memory_kernel, out=self._memory_state)
-        self._memory_state.add_(input_memory_part)
+        self._memory_state = torch.addmm(input_memory_part, self._memory_state, self.memory_kernel)
 
         return None, self._memory_state
 
+    @torch.no_grad()
     def _forward_leaky_integrator(self, xt: torch.Tensor) -> tuple[torch.FloatTensor, torch.FloatTensor]:
 
         # memory part
         input_memory_part = torch.matmul(xt, self.input_memory_kernel)  # Vx * x(t)
-        torch.matmul(self._memory_state, self.memory_kernel, out=self._memory_state)  # Vm * m(t-1)
-        self._memory_state.add_(input_memory_part)  # m(t) = Vx * x(t) + Vm * m(t-1)
+        # m(t) = Vx * x(t) + Vm * m(t-1)
+        self._memory_state = torch.addmm(input_memory_part, self._memory_state, self.memory_kernel)
 
         # non-linear part
-        input_non_linear_part = torch.matmul(xt, self.input_non_linear_kernel)  # Wx * x(t)
-        non_linear_part = torch.matmul(self._non_linear_state, self.non_linear_kernel)  # Wh * h(t-1)
-        memory_non_linear_part = torch.matmul(self._memory_state, self.memory_non_linear_kernel)  # Wm * m(t)
-        # Wx * x(t) + Wh * h(t-1) + Wm * m(t) + b
-        combined_input = input_non_linear_part.add_(non_linear_part).add_(memory_non_linear_part).add_(self.bias)
+        combined_input = torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)  # Wh * h(t-1) + b
+        combined_input.addmm_(xt, self.input_non_linear_kernel)  # Wx * x(t)
+        combined_input.addmm_(self._memory_state, self.memory_non_linear_kernel)  # Wm * m(t)
+
         # h(t) = (1 - alpha) * h(t-1) + alpha * f(Wx * x(t) + Wh * h(t-1) + Wm * m(t) + b)
-        self._non_linear_state.mul_(self.one_minus_leaky_rate).add_(self.leaky_rate *
-                                                                    self._non_linearity_function(combined_input))
+        (self._non_linear_state.mul_(self.one_minus_leaky_rate).add_
+         (self.leaky_rate * self._non_linearity_function(combined_input)))
 
         return self._non_linear_state, self._memory_state
 
+    @torch.no_grad()
     def _forward_euler(self, xt: torch.Tensor) -> tuple[torch.FloatTensor, torch.FloatTensor]:
 
         # memory part
         input_memory_part = torch.matmul(xt, self.input_memory_kernel)  # Vx * x(t)
-        torch.matmul(self._memory_state, self.memory_kernel, out=self._memory_state)  # Vm * m(t-1)
-        self._memory_state.add_(input_memory_part)  # m(t) = Vx * x(t) + Vm * m(t-1)
+        # m(t) = Vx * x(t) + Vm * m(t-1)
+        self._memory_state = torch.addmm(input_memory_part, self._memory_state, self.memory_kernel)
 
         # non-linear part
-        input_non_linear_part = torch.matmul(xt, self.input_non_linear_kernel)  # Wx * x(t)
-        non_linear_part = torch.matmul(self._non_linear_state, self.non_linear_kernel)  # Wh * h(t-1)
-        memory_non_linear_part = torch.matmul(self._memory_state, self.memory_non_linear_kernel)  # Wm * m(t)
-        # Wx * x(t) + Wh * h(t-1) + Wm * m(t) + b
-        combined_input = input_non_linear_part.add_(non_linear_part).add_(memory_non_linear_part).add_(self.bias)
+        combined_input = torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)  # Wh * h(t-1) + b
+        combined_input.addmm_(xt, self.input_non_linear_kernel)  # Wx * x(t)
+        combined_input.addmm_(self._memory_state, self.memory_non_linear_kernel)  # Wm * m(t)
 
         # h(t) = h(t-1) + epsilon * f(Wh * h(t-1) + Wx * x(t) + Wm * m(t) + b)
         self._non_linear_state.add_(self.epsilon * self._non_linearity_function(combined_input))
 
         return self._non_linear_state, self._memory_state
 
+    @torch.no_grad()
     def forward(self, xt: torch.Tensor) -> tuple[torch.FloatTensor, torch.FloatTensor]:
 
         if self._memory_state is None:
@@ -288,6 +288,7 @@ class ReservoirMemoryNetwork(torch.nn.Module):
 
     import torch
 
+    @torch.no_grad()
     def forward(self, x: torch.Tensor) \
             -> tuple[torch.FloatTensor, torch.FloatTensor]:
         if not self.just_memory:
@@ -318,6 +319,7 @@ class ReservoirMemoryNetwork(torch.nn.Module):
         else:
             return None, memory_states
 
+    @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
             use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
         states, ys = [], []
@@ -344,6 +346,7 @@ class ReservoirMemoryNetwork(torch.nn.Module):
 
         self.readout.fit(states, ys)
 
+    @torch.no_grad()
     def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
               use_last_state: bool = True, disable_progress_bar: bool = False) \
             -> float:
@@ -372,6 +375,7 @@ class ReservoirMemoryNetwork(torch.nn.Module):
 
         return self.readout.score(states, ys)
 
+    @torch.no_grad()
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
                 use_last_state: bool = True, disable_progress_bar: bool = False) -> np.ndarray:
         states = []

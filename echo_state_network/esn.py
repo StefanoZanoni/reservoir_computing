@@ -11,6 +11,61 @@ from utils.initialization import (sparse_tensor_init, sparse_recurrent_tensor_in
                                   sparse_eye_init, fast_spectral_rescaling, circular_tensor_init, skewsymmetric)
 
 
+def init_bias(bias, recurrent_units, input_scaling, bias_scaling):
+    if bias:
+        bias_scaling = input_scaling if bias_scaling is None else bias_scaling
+        bias = (2 * torch.rand(recurrent_units) - 1) * bias_scaling
+    else:
+        bias = torch.zeros(recurrent_units)
+    return torch.nn.Parameter(bias, requires_grad=False)
+
+
+def rescale_kernel(W, spectral_radius, leaky_rate, effective_rescaling, distribution, recurrent_connectivity,
+                   recurrent_units, circular_recurrent_kernel):
+    if effective_rescaling and leaky_rate != 1:
+        I = sparse_eye_init(recurrent_units)
+        W = W * leaky_rate + (I * (1 - leaky_rate))
+        W = spectral_norm_scaling(W, spectral_radius)
+        return (W + I * (leaky_rate - 1)) * (1 / leaky_rate)
+    if distribution == 'normal' and recurrent_units != 1:
+        return spectral_radius * W
+    if distribution == 'uniform' and recurrent_connectivity == recurrent_units and not circular_recurrent_kernel \
+            and recurrent_units != 1:
+        return fast_spectral_rescaling(W, spectral_radius)
+    return spectral_norm_scaling(W, spectral_radius)
+
+
+def init_recurrent_kernel(recurrent_units, recurrent_connectivity, distribution, spectral_radius, leaky_rate,
+                          effective_rescaling, circular_recurrent_kernel, euler, gamma, recurrent_scaling):
+    if euler:
+        W = skewsymmetric(recurrent_units, recurrent_scaling)
+        kernel = W - gamma * torch.eye(recurrent_units)
+    else:
+        W = circular_tensor_init(recurrent_units, distribution=distribution) if circular_recurrent_kernel else \
+            sparse_recurrent_tensor_init(recurrent_units, C=recurrent_connectivity, distribution=distribution)
+        kernel = rescale_kernel(W, spectral_radius, leaky_rate, effective_rescaling, distribution,
+                                recurrent_connectivity, recurrent_units, circular_recurrent_kernel)
+    return torch.nn.Parameter(kernel, requires_grad=False)
+
+
+def init_input_kernel(input_units, recurrent_units, input_connectivity, input_scaling):
+    kernel = sparse_tensor_init(input_units, recurrent_units, C=input_connectivity) * input_scaling
+    return torch.nn.Parameter(kernel, requires_grad=False)
+
+
+def validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity):
+    if input_units < 1:
+        raise ValueError("Input units must be greater than 0.")
+    if recurrent_units < 1:
+        raise ValueError("Recurrent units must be greater than 0.")
+    if not (0 <= spectral_radius <= 1):
+        raise ValueError("Spectral radius must be in [0, 1].")
+    if not (0 < leaky_rate <= 1):
+        raise ValueError("Leaky rate must be in (0, 1].")
+    if not (1 <= recurrent_connectivity <= recurrent_units):
+        raise ValueError("Recurrent connectivity must be in [1, recurrent_units].")
+
+
 class ReservoirCell(torch.nn.Module):
     def __init__(self,
                  input_units: int,
@@ -25,101 +80,61 @@ class ReservoirCell(torch.nn.Module):
                  distribution: str = 'uniform',
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
-                 bias_scaling: float | None,
+                 bias_scaling: float | None = None,
                  circular_recurrent_kernel: bool = True,
                  euler: bool = False,
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
                  recurrent_scaling: float = 1e-2,
                  ) -> None:
-
         super().__init__()
 
-        if input_units < 1:
-            raise ValueError("Input units must be greater than 0.")
+        validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity)
+
         self.input_units = input_units
-        if recurrent_units < 1:
-            raise ValueError("Recurrent units must be greater than 0.")
         self.recurrent_units = recurrent_units
         self.input_scaling = input_scaling
-        if spectral_radius > 1 or spectral_radius < 0:
-            raise ValueError("Spectral radius must be in [0, 1].")
         self.spectral_radius = spectral_radius
-        if leaky_rate > 1 or leaky_rate <= 0:
-            raise ValueError("Leaky rate must be in (0, 1].")
         self.leaky_rate = leaky_rate
         self.one_minus_leaky_rate = 1 - leaky_rate
         self.input_connectivity = input_connectivity
-        if recurrent_connectivity > recurrent_units or recurrent_connectivity < 1:
-            raise ValueError("Recurrent connectivity must be in [1, non_linear_units].")
         self.recurrent_connectivity = recurrent_connectivity
 
-        self.input_kernel = sparse_tensor_init(input_units, recurrent_units, C=input_connectivity) * input_scaling
-        self.input_kernel = torch.nn.Parameter(self.input_kernel, requires_grad=False)
+        self.input_kernel = init_input_kernel(input_units, recurrent_units, input_connectivity, input_scaling)
+        self.recurrent_kernel = init_recurrent_kernel(recurrent_units, recurrent_connectivity, distribution,
+                                                      spectral_radius, leaky_rate, effective_rescaling,
+                                                      circular_recurrent_kernel, euler, gamma, recurrent_scaling)
+        self.bias = init_bias(bias, recurrent_units, input_scaling, bias_scaling)
 
-        if euler:
-            W = skewsymmetric(recurrent_units, recurrent_scaling)
-            self.recurrent_kernel = W - gamma * torch.eye(recurrent_units)
-            self.epsilon = epsilon
-        else:
-            if circular_recurrent_kernel:
-                W = circular_tensor_init(recurrent_units, distribution=distribution)
-            else:
-                W = sparse_recurrent_tensor_init(recurrent_units, C=recurrent_connectivity, distribution=distribution)
-
-            # re-scale the weight matrix to control the effective spectral radius of the linearized system
-            if effective_rescaling and leaky_rate != 1:
-                I = sparse_eye_init(recurrent_units)
-                W = W * leaky_rate + (I * (1 - leaky_rate))
-                W = spectral_norm_scaling(W, spectral_radius)
-                self.recurrent_kernel = (W + I * (leaky_rate - 1)) * (1 / leaky_rate)
-            else:
-                if distribution == 'normal' and not recurrent_units == 1:
-                    W = spectral_radius * W  # NB: W was already rescaled to 1 (circular law)
-                elif (distribution == 'uniform' and recurrent_connectivity == recurrent_units
-                      and not circular_recurrent_kernel and not recurrent_units == 1):  # fully connected uniform
-                    W = fast_spectral_rescaling(W, spectral_radius)
-                else:  # sparse connections uniform
-                    W = spectral_norm_scaling(W, spectral_radius)
-                self.recurrent_kernel = W
-
-        self.recurrent_kernel = torch.nn.Parameter(self.recurrent_kernel, requires_grad=False)
-
-        if bias:
-            if bias_scaling is None:
-                self.bias_scaling = input_scaling
-            else:
-                self.bias_scaling = bias_scaling
-            # uniform init in [-1, +1] times bias_scaling
-            self.bias = (2 * torch.rand(self.recurrent_units) - 1) * self.bias_scaling
-            self.bias = torch.nn.Parameter(self.bias, requires_grad=False)
-        else:
-            # zero bias
-            self.bias = torch.zeros(self.recurrent_units)
-            self.bias = torch.nn.Parameter(self.bias, requires_grad=False)
-
+        self.epsilon = epsilon
         self.non_linearity = non_linearity
         self._non_linear_function: Callable = torch.tanh if non_linearity == 'tanh' else lambda x: x
         self._state = None
         self._forward_function: Callable = self._forward_euler if euler else self._forward_leaky_integrator
 
+    @torch.no_grad()
     def _forward_leaky_integrator(self, xt: torch.Tensor) -> torch.FloatTensor:
-        input_part = torch.matmul(xt, self.input_kernel)
-        state_part = torch.matmul(self._state, self.recurrent_kernel)
-        output = self._non_linear_function(input_part.add_(state_part).add_(self.bias))
-
-        self._state.mul_(self.one_minus_leaky_rate).add_(output.mul_(self.leaky_rate))
-
+        self._state.mul_(self.one_minus_leaky_rate).add_(
+            self._non_linear_function(
+                torch.matmul(xt, self.input_kernel).add_(  # input part
+                    torch.matmul(self._state, self.recurrent_kernel)  # state part
+                ).add_(self.bias)
+            ).mul_(self.leaky_rate)
+        )
         return self._state
 
+    @torch.no_grad()
     def _forward_euler(self, xt: torch.Tensor) -> torch.FloatTensor:
-        input_part = torch.matmul(xt, self.input_kernel)
-        state_part = torch.matmul(self._state, self.recurrent_kernel)
-        output = self._non_linear_function(input_part.add_(state_part).add_(self.bias))
-        self._state.add_(output.mul_(self.epsilon))
-
+        self._state.add_(
+            self._non_linear_function(
+                torch.matmul(xt, self.input_kernel).add_(
+                    torch.matmul(self._state, self.recurrent_kernel)
+                ).add_(self.bias)
+            ).mul_(self.epsilon)
+        )
         return self._state
 
+    @torch.no_grad()
     def forward(self, xt: torch.Tensor) -> torch.FloatTensor:
         if self._state is None:
             self._state = torch.zeros((xt.shape[0], self.recurrent_units), dtype=torch.float32, requires_grad=False,
@@ -181,22 +196,23 @@ class EchoStateNetwork(torch.nn.Module):
         elif task == 'regression':
             self.readout = Ridge(alpha=alpha, max_iter=max_iter, tol=tolerance)
 
+    @torch.no_grad()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         states = torch.empty((x.shape[0], x.shape[1], self.net.recurrent_units), dtype=torch.float32,
                              requires_grad=False, device=x.device)
 
         is_dim_2 = x.dim() == 2
 
-        with torch.no_grad():
-            for t in range(x.shape[1]):
-                xt = x[:, t].unsqueeze(1) if is_dim_2 else x[:, t]
-                state = self.net(xt)
-                states[:, t, :].copy_(state)
+        for t in range(x.shape[1]):
+            xt = x[:, t].unsqueeze(1) if is_dim_2 else x[:, t]
+            state = self.net(xt)
+            states[:, t, :].copy_(state)
 
         states = states[:, self.initial_transients:, :]
 
         return states
 
+    @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
             use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
         states, ys = [], []
@@ -223,6 +239,7 @@ class EchoStateNetwork(torch.nn.Module):
 
         self.readout.fit(states, ys)
 
+    @torch.no_grad()
     def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
               use_last_state: bool = True, disable_progress_bar: bool = False) -> float:
         states, ys = [], []
@@ -250,6 +267,7 @@ class EchoStateNetwork(torch.nn.Module):
 
         return self.readout.score(states, ys)
 
+    @torch.no_grad()
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
                 use_last_state: bool = True, disable_progress_bar: bool = False) -> np.ndarray:
         states = []

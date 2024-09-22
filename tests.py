@@ -66,7 +66,7 @@ if __name__ == '__main__':
     parser.add_argument('--bias_scaling', type=float, default=None, help='Bias scaling')
 
     # general parameters
-    parser.add_argument('--spectral_radius', type=float, default=0.99, help='Spectral radius')
+    parser.add_argument('--spectral_radius', type=float, default=0.9, help='Spectral radius')
     parser.add_argument('--leaky_rate', type=float, default=1.0, help='Leaky rate')
     parser.add_argument('--bias', action='store_true', help='Whether to use bias or not')
     parser.add_argument('--distribution', type=str, default='uniform', help='Weights distribution to use')

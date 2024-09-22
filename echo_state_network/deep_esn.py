@@ -127,6 +127,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         elif task == 'regression':
             self.readout = Ridge(alpha=alpha, max_iter=max_iter, tol=tolerance)
 
+    @torch.no_grad()
     def forward(self, x: torch.Tensor) -> tuple:
         # list of all the states in all the layers
         states = []
@@ -149,6 +150,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
 
         return states, states_last
 
+    @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
             use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
         states, ys = [], []
@@ -176,6 +178,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
 
         self.readout.fit(states, ys)
 
+    @torch.no_grad()
     def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
               use_last_state: bool = True, disable_progress_bar: bool = False) -> float:
         states, ys = [], []
@@ -204,6 +207,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
 
         return self.readout.score(states, ys)
 
+    @torch.no_grad()
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
                 use_last_state: bool = True, disable_progress_bar: bool = False) -> np.ndarray:
         states = []
