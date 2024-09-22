@@ -124,7 +124,8 @@ def circular_tensor_init(M: int, distribution: str = 'uniform') -> torch.FloatTe
     """
 
     dense_shape = (M, M)  # the shape of the dense version of the matrix
-    indices = torch.cat([torch.stack([torch.arange(1, M), torch.arange(M-1)], dim=1), torch.tensor([[0, M-1]])], dim=0)
+    indices = torch.cat([torch.stack([torch.arange(1, M), torch.arange(M - 1)], dim=1), torch.tensor([[0, M - 1]])],
+                        dim=0)
 
     if distribution == 'fixed':
         values = torch.ones(M, dtype=torch.float32)
@@ -149,7 +150,6 @@ def skewsymmetric(units: int, scaling: float) -> torch.FloatTensor:
 
 
 def legendre_tensor_init(M: int, theta: float) -> torch.FloatTensor:
-
     """
     Generate a dense matrix leveraging the Legendre polynomials.
 
@@ -165,3 +165,51 @@ def legendre_tensor_init(M: int, theta: float) -> torch.FloatTensor:
                          (2 * indices[:, 0] + 1) / theta * (-1) ** (indices[:, 0] - indices[:, 1] + 1))
 
     return torch.sparse_coo_tensor(indices.T, values, (M, M), dtype=torch.float32).to_dense()
+
+
+def init_bias(bias, non_linear_units, input_scaling, bias_scaling):
+    if bias:
+        bias_scaling = input_scaling if bias_scaling is None else bias_scaling
+        bias = (2 * torch.rand(non_linear_units) - 1) * bias_scaling
+    else:
+        bias = torch.zeros(non_linear_units)
+    return torch.nn.Parameter(bias, requires_grad=False)
+
+
+def rescale_kernel(W, spectral_radius, leaky_rate, effective_rescaling, distribution, memory_connectivity, memory_units,
+                   circular_memory_kernel):
+    if effective_rescaling and leaky_rate != 1:
+        I = sparse_eye_init(memory_units)
+        W = W * leaky_rate + (I * (1 - leaky_rate))
+        W = spectral_norm_scaling(W, spectral_radius)
+        return (W + I * (leaky_rate - 1)) * (1 / leaky_rate)
+    if distribution == 'normal' and memory_units != 1:
+        return spectral_radius * W
+    if distribution == 'uniform' and memory_connectivity == memory_units and not circular_memory_kernel and memory_units != 1:
+        return fast_spectral_rescaling(W, spectral_radius)
+    return spectral_norm_scaling(W, spectral_radius)
+
+
+def init_non_linear_kernel(memory_units, memory_connectivity, distribution, spectral_radius, leaky_rate,
+                           effective_rescaling, circular_memory_kernel, euler, gamma, memory_scaling):
+    if euler:
+        W = skewsymmetric(memory_units, memory_scaling)
+        kernel = W - gamma * torch.eye(memory_units)
+    else:
+        W = circular_tensor_init(memory_units,
+                                 distribution=distribution) if circular_memory_kernel else sparse_recurrent_tensor_init(
+            memory_units, C=memory_connectivity, distribution=distribution)
+        kernel = rescale_kernel(W, spectral_radius, leaky_rate, effective_rescaling, distribution, memory_connectivity,
+                                memory_units, circular_memory_kernel)
+    return torch.nn.Parameter(kernel, requires_grad=False)
+
+
+def init_input_kernel(input_units, memory_units, input_connectivity, input_scaling):
+    kernel = sparse_tensor_init(input_units, memory_units, C=input_connectivity) * input_scaling
+    return torch.nn.Parameter(kernel, requires_grad=False)
+
+def init_memory_kernel(memory_units, theta, legendre):
+    if legendre:
+        M = legendre_tensor_init(memory_units, theta)
+        return torch.nn.Parameter(torch.matrix_exp(M), requires_grad=False)
+    return torch.nn.Parameter(circular_tensor_init(memory_units, distribution='fixed'), requires_grad=False)

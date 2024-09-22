@@ -7,53 +7,11 @@ from sklearn.linear_model import RidgeClassifier, Ridge
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 
-from utils.initialization import (sparse_tensor_init, sparse_recurrent_tensor_init, spectral_norm_scaling,
-                                  sparse_eye_init, fast_spectral_rescaling, circular_tensor_init, skewsymmetric)
+from utils.initialization import init_input_kernel, init_non_linear_kernel, init_bias
 
 
-def init_bias(bias, recurrent_units, input_scaling, bias_scaling):
-    if bias:
-        bias_scaling = input_scaling if bias_scaling is None else bias_scaling
-        bias = (2 * torch.rand(recurrent_units) - 1) * bias_scaling
-    else:
-        bias = torch.zeros(recurrent_units)
-    return torch.nn.Parameter(bias, requires_grad=False)
-
-
-def rescale_kernel(W, spectral_radius, leaky_rate, effective_rescaling, distribution, recurrent_connectivity,
-                   recurrent_units, circular_recurrent_kernel):
-    if effective_rescaling and leaky_rate != 1:
-        I = sparse_eye_init(recurrent_units)
-        W = W * leaky_rate + (I * (1 - leaky_rate))
-        W = spectral_norm_scaling(W, spectral_radius)
-        return (W + I * (leaky_rate - 1)) * (1 / leaky_rate)
-    if distribution == 'normal' and recurrent_units != 1:
-        return spectral_radius * W
-    if distribution == 'uniform' and recurrent_connectivity == recurrent_units and not circular_recurrent_kernel \
-            and recurrent_units != 1:
-        return fast_spectral_rescaling(W, spectral_radius)
-    return spectral_norm_scaling(W, spectral_radius)
-
-
-def init_recurrent_kernel(recurrent_units, recurrent_connectivity, distribution, spectral_radius, leaky_rate,
-                          effective_rescaling, circular_recurrent_kernel, euler, gamma, recurrent_scaling):
-    if euler:
-        W = skewsymmetric(recurrent_units, recurrent_scaling)
-        kernel = W - gamma * torch.eye(recurrent_units)
-    else:
-        W = circular_tensor_init(recurrent_units, distribution=distribution) if circular_recurrent_kernel else \
-            sparse_recurrent_tensor_init(recurrent_units, C=recurrent_connectivity, distribution=distribution)
-        kernel = rescale_kernel(W, spectral_radius, leaky_rate, effective_rescaling, distribution,
-                                recurrent_connectivity, recurrent_units, circular_recurrent_kernel)
-    return torch.nn.Parameter(kernel, requires_grad=False)
-
-
-def init_input_kernel(input_units, recurrent_units, input_connectivity, input_scaling):
-    kernel = sparse_tensor_init(input_units, recurrent_units, C=input_connectivity) * input_scaling
-    return torch.nn.Parameter(kernel, requires_grad=False)
-
-
-def validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity):
+def validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity,
+                    distribution, non_linearity):
     if input_units < 1:
         raise ValueError("Input units must be greater than 0.")
     if recurrent_units < 1:
@@ -64,6 +22,10 @@ def validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, r
         raise ValueError("Leaky rate must be in (0, 1].")
     if not (1 <= recurrent_connectivity <= recurrent_units):
         raise ValueError("Recurrent connectivity must be in [1, recurrent_units].")
+    if distribution not in ['uniform', 'normal', 'fixed']:
+        raise ValueError("Distribution must be 'uniform', 'normal', or 'fixed'.")
+    if non_linearity not in ['tanh', 'identity']:
+        raise ValueError("Non-linearity must be 'tanh' or 'identity'.")
 
 
 class ReservoirCell(torch.nn.Module):
@@ -72,7 +34,7 @@ class ReservoirCell(torch.nn.Module):
                  recurrent_units: int,
                  *,
                  input_scaling: float = 1.0,
-                 spectral_radius: float = 0.99,
+                 spectral_radius: float = 0.9,
                  leaky_rate: float = 1.0,
                  input_connectivity: int = 1,
                  recurrent_connectivity: int = 1,
@@ -89,7 +51,8 @@ class ReservoirCell(torch.nn.Module):
                  ) -> None:
         super().__init__()
 
-        validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity)
+        validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity,
+                        distribution, non_linearity)
 
         self.input_units = input_units
         self.recurrent_units = recurrent_units
@@ -101,9 +64,9 @@ class ReservoirCell(torch.nn.Module):
         self.recurrent_connectivity = recurrent_connectivity
 
         self.input_kernel = init_input_kernel(input_units, recurrent_units, input_connectivity, input_scaling)
-        self.recurrent_kernel = init_recurrent_kernel(recurrent_units, recurrent_connectivity, distribution,
-                                                      spectral_radius, leaky_rate, effective_rescaling,
-                                                      circular_recurrent_kernel, euler, gamma, recurrent_scaling)
+        self.recurrent_kernel = init_non_linear_kernel(recurrent_units, recurrent_connectivity, distribution,
+                                                       spectral_radius, leaky_rate, effective_rescaling,
+                                                       circular_recurrent_kernel, euler, gamma, recurrent_scaling)
         self.bias = init_bias(bias, recurrent_units, input_scaling, bias_scaling)
 
         self.epsilon = epsilon

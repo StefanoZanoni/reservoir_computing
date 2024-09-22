@@ -20,7 +20,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
                  initial_transients: int = 0,
                  input_scaling: float = 1.0,
                  inter_scaling: float = 1.0,
-                 spectral_radius: float = 0.99,
+                 spectral_radius: float = 0.9,
                  leaky_rate: float = 1.0,
                  input_connectivity: int = 1,
                  recurrent_connectivity: int = 1,

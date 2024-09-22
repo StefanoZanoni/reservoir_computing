@@ -6,8 +6,36 @@ from tqdm import tqdm
 from sklearn.linear_model import RidgeClassifier, Ridge
 from sklearn.preprocessing import StandardScaler
 
-from utils.initialization import (sparse_tensor_init, sparse_recurrent_tensor_init, spectral_norm_scaling,
-                                  sparse_eye_init, fast_spectral_rescaling, circular_tensor_init, legendre_tensor_init)
+from utils.initialization import init_memory_kernel, init_input_kernel, init_non_linear_kernel, init_bias
+
+
+def validate_params(just_memory, input_units, memory_units, non_linear_units, spectral_radius, leaky_rate,
+                    memory_non_linear_connectivity, input_non_linear_connectivity, non_linear_connectivity,
+                    input_memory_connectivity, distribution, non_linearity):
+    if input_units < 1:
+        raise ValueError("Input units must be greater than 0.")
+    if memory_units < 1:
+        raise ValueError("Memory units must be greater than 0.")
+    if not (1 <= input_memory_connectivity <= memory_units):
+        raise ValueError("Input to memory connectivity must be in [1, memory_units].")
+    if distribution not in ['uniform', 'normal', 'fixed']:
+        raise ValueError("Distribution must be 'uniform', 'normal', or 'fixed'.")
+    if non_linearity not in ['tanh', 'identity']:
+        raise ValueError("Non-linearity must be 'tanh' or 'identity'.")
+
+    if not just_memory:
+        if non_linear_units < 1:
+            raise ValueError("Non linear units must be greater than 0.")
+        if not (0 <= spectral_radius <= 1):
+            raise ValueError("Spectral radius must be in [0, 1].")
+        if not (0 < leaky_rate <= 1):
+            raise ValueError("Leaky rate must be in (0, 1].")
+        if not (1 <= input_non_linear_connectivity <= non_linear_units):
+            raise ValueError("Input to non linear connectivity must be in [1, non_linear_units].")
+        if not (1 <= non_linear_connectivity <= non_linear_units):
+            raise ValueError("Non linear connectivity must be in [1, non_linear_units].")
+        if not (1 <= memory_non_linear_connectivity <= non_linear_units):
+            raise ValueError("Memory to non linear connectivity must be in [1, non_linear_units].")
 
 
 class RMNCell(torch.nn.Module):
@@ -19,7 +47,7 @@ class RMNCell(torch.nn.Module):
                  input_memory_scaling: float = 1.0,
                  input_non_linear_scaling: float = 1.0,
                  memory_non_linear_scaling: float = 1.0,
-                 spectral_radius: float = 0.99,
+                 spectral_radius: float = 0.9,
                  leaky_rate: float = 1.0,
                  input_memory_connectivity: int = 1,
                  input_non_linear_connectivity: int = 1,
@@ -41,120 +69,50 @@ class RMNCell(torch.nn.Module):
 
         super().__init__()
 
+        validate_params(just_memory, input_units, memory_units, non_linear_units, spectral_radius, leaky_rate,
+                        memory_non_linear_connectivity, input_non_linear_connectivity, non_linear_connectivity,
+                        input_memory_connectivity, distribution, non_linearity)
+
         self.just_memory = just_memory
-
-        if input_units < 1:
-            raise ValueError("Input units must be greater than 0.")
         self.input_units = input_units
-
-        if not just_memory:
-            if non_linear_units < 1:
-                raise ValueError("Recurrent units must be greater than 0.")
-            self.non_linear_units = non_linear_units
-            self.input_non_linear_scaling = input_non_linear_scaling
-            if input_non_linear_connectivity > non_linear_units or input_non_linear_connectivity < 1:
-                raise ValueError("Input to non linear connectivity must be in [1, non_linear_units].")
-            self.input_non_linear_connectivity = input_non_linear_connectivity
-            if non_linear_connectivity > non_linear_units or non_linear_connectivity < 1:
-                raise ValueError("Non linear connectivity must be in [1, non_linear_units].")
-
-        if memory_units < 1:
-            raise ValueError("Memory units must be greater than 0.")
         self.memory_units = memory_units
         self.input_memory_scaling = input_memory_scaling
-        if input_memory_connectivity > memory_units or input_memory_connectivity < 1:
-            raise ValueError("Input to memory connectivity must be in [1, memory_units].")
         self.input_memory_connectivity = input_memory_connectivity
 
+        # Input to memory reservoir kernel
+        self.input_memory_kernel = init_input_kernel(input_units, memory_units, input_memory_connectivity,
+                                                     input_memory_scaling)
+        # Memory reservoir kernel
+        self.memory_kernel = init_memory_kernel(memory_units, theta, legendre)
+        self._memory_state = None
+        self._forward_function: Callable = self._forward_memory
+
         if not just_memory:
-            if spectral_radius > 1 or spectral_radius < 0:
-                raise ValueError("Spectral radius must be in [0, 1].")
+            self.non_linear_units = non_linear_units
+            self.input_non_linear_scaling = input_non_linear_scaling
+            self.input_non_linear_connectivity = input_non_linear_connectivity
             self.spectral_radius = spectral_radius
-            if leaky_rate > 1 or leaky_rate <= 0:
-                raise ValueError("Leaky rate must be in (0, 1].")
             self.leaky_rate = leaky_rate
             self.one_minus_leaky_rate = 1 - leaky_rate
-
-        # Input to memory reservoir connectivity
-        self.input_memory_kernel = sparse_tensor_init(input_units, memory_units,
-                                                      C=input_memory_connectivity) * input_memory_scaling
-        self.input_memory_kernel = torch.nn.Parameter(self.input_memory_kernel, requires_grad=False)
-
-        if not just_memory:
-            # Input to non-linear reservoir connectivity
-            self.input_non_linear_kernel = sparse_tensor_init(input_units, non_linear_units,
-                                                              C=input_non_linear_connectivity) * input_non_linear_scaling
-            self.input_non_linear_kernel = torch.nn.Parameter(self.input_non_linear_kernel, requires_grad=False)
-
-        if not just_memory:
-            if euler:
-                W = skewsymmetric(non_linear_units, recurrent_scaling)
-                self.non_linear_kernel = W - gamma * torch.eye(non_linear_units)
-                self.epsilon = epsilon
-            else:
-                # Non-linear reservoir connectivity
-                if circular_non_linear_kernel:
-                    W = circular_tensor_init(non_linear_units, distribution=distribution)
-                else:
-                    W = sparse_recurrent_tensor_init(non_linear_units, C=non_linear_units, distribution=distribution)
-
-                # re-scale the weight matrix to control the effective spectral radius of the linearized system
-                if effective_rescaling and leaky_rate != 1:
-                    I = sparse_eye_init(non_linear_units)
-                    W = W * leaky_rate + (I * (1 - leaky_rate))
-                    W = spectral_norm_scaling(W, spectral_radius)
-                    self.non_linear_kernel = (W + I * (leaky_rate - 1)) * (1 / leaky_rate)
-                else:
-                    if distribution == 'normal' and not non_linear_units == 1:
-                        W = spectral_radius * W  # NB: W was already rescaled to 1 (circular_non_linear law)
-                    elif (distribution == 'uniform' and non_linear_connectivity == non_linear_units
-                          and not circular_non_linear_kernel and not non_linear_units == 1):  # fully connected uniform
-                        W = fast_spectral_rescaling(W, spectral_radius)
-                    else:  # sparse connections uniform
-                        W = spectral_norm_scaling(W, spectral_radius)
-                    self.non_linear_kernel = W
-
-            self.non_linear_kernel = torch.nn.Parameter(self.non_linear_kernel, requires_grad=False)
-
-        # Memory reservoir connectivity
-        if legendre:
-            M = legendre_tensor_init(memory_units, theta)
-            self.memory_kernel = torch.matrix_exp(M)
-        else:
-            self.memory_kernel = circular_tensor_init(memory_units, distribution='fixed')
-        self.memory_kernel = torch.nn.Parameter(self.memory_kernel, requires_grad=False)
-
-        if not just_memory:
+            # Input to non-linear reservoir kernel
+            self.input_non_linear_kernel = init_input_kernel(input_units, non_linear_units,
+                                                             input_non_linear_connectivity, input_non_linear_scaling)
+            # Non-linear reservoir kernel
+            self.non_linear_kernel = init_non_linear_kernel(non_linear_units, non_linear_connectivity,
+                                                            distribution, spectral_radius, leaky_rate,
+                                                            effective_rescaling, circular_non_linear_kernel,
+                                                            euler, gamma, recurrent_scaling)
+            self.epsilon = epsilon
             # Memory to non-linear reservoir connectivity
-            self.memory_non_linear_kernel = (sparse_tensor_init(memory_units, non_linear_units,
-                                                                C=memory_non_linear_connectivity)
-                                             * memory_non_linear_scaling)
-            self.memory_non_linear_kernel = torch.nn.Parameter(self.memory_non_linear_kernel, requires_grad=False)
+            self.memory_non_linear_kernel = init_input_kernel(memory_units, non_linear_units,
+                                                              memory_non_linear_connectivity, memory_non_linear_scaling)
+            self.bias = init_bias(bias, non_linear_units, input_non_linear_scaling, bias_scaling)
 
-        if not just_memory:
-            if bias:
-                if bias_scaling is None:
-                    self.bias_scaling = input_non_linear_scaling
-                else:
-                    self.bias_scaling = bias_scaling
-                # uniform init in [-1, +1] times bias_scaling
-                self.bias = (2 * torch.rand(self.non_linear_units) - 1) * self.bias_scaling
-                self.bias = torch.nn.Parameter(self.bias, requires_grad=False)
-            else:
-                # zero bias
-                self.bias = torch.zeros(self.non_linear_units)
-                self.bias = torch.nn.Parameter(self.bias, requires_grad=False)
-
-        if not just_memory:
             self.non_linearity = non_linearity
             self._non_linearity_function: Callable = torch.tanh if non_linearity == 'tanh' else lambda x: x
-        self._memory_state = None
-        if not just_memory:
+
             self._non_linear_state = None
-        if not just_memory:
             self._forward_function: Callable = self._forward_euler if euler else self._forward_leaky_integrator
-        else:
-            self._forward_function: Callable = self._forward_memory
 
     @torch.no_grad()
     def _forward_memory(self, xt: torch.Tensor) -> torch.FloatTensor:
@@ -227,7 +185,7 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                  input_memory_scaling: float = 1.0,
                  input_non_linear_scaling: float = 1.0,
                  memory_non_linear_scaling: float = 1.0,
-                 spectral_radius: float = 0.99,
+                 spectral_radius: float = 0.9,
                  leaky_rate: float = 1.0,
                  input_memory_connectivity: int = 1,
                  input_non_linear_connectivity: int = 1,

@@ -23,7 +23,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                  memory_non_linear_scaling: float = 1.0,
                  inter_non_linear_scaling: float = 1.0,
                  inter_memory_scaling: float = 1.0,
-                 spectral_radius: float = 0.99,
+                 spectral_radius: float = 0.9,
                  leaky_rate: float = 1.0,
                  input_memory_connectivity: int = 1,
                  input_non_linear_connectivity: int = 1,
