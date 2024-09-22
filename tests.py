@@ -359,12 +359,12 @@ if __name__ == '__main__':
             else:
                 max_delay = non_linear_units * number_of_layers * 2
         elif model_name == 'rmn' and not just_memory:
-            if concatenate_non_linear:
-                max_delay = (memory_units + non_linear_units / number_of_layers) * number_of_layers * 2
-            elif concatenate_memory:
-                max_delay = (memory_units / number_of_layers + non_linear_units) * number_of_layers * 2
-            elif concatenate_memory and concatenate_non_linear:
-                max_delay = (memory_units + non_linear_units) * 2
+            if concatenate_non_linear and not concatenate_memory:
+                max_delay = (memory_units * number_of_layers + non_linear_units) * 2
+            elif concatenate_memory and not concatenate_non_linear:
+                max_delay = (memory_units + non_linear_units * number_of_layers) * 2
+            else:
+                max_delay = (memory_units + non_linear_units) * number_of_layers * 2
         else:
             if concatenate_memory:
                 max_delay = memory_units * 2
