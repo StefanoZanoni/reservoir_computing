@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 import numpy as np
 
@@ -39,42 +40,30 @@ def test_esn():
             gamma = np.random.choice(gammas)
             rs = np.random.choice(recurrent_scaling)
 
-            if b:
-                bias_flag = '--bias'
-            else:
-                bias_flag = ''
-            if er:
-                er_flag = '--effective_rescaling'
-            else:
-                er_flag = ''
-            if e:
-                euler_flag = '--euler'
-            else:
-                euler_flag = ''
+            command = [
+                'python', 'tests.py', '--dataset', 'memory_capacity', '--model', 'esn',
+                '--num_layers', '2', '--circular_non_linear', '--seed', '5',
+                '--batch_training', '1', '--batch_validation', '1', '--batch_testing', '1',
+                '--input_units', '1', '--non_linear_units', str(neurons),
+                '--input_non_linear_scaling', '1', '--inter_non_linear_scaling', '1',
+                '--input_non_linear_connectivity', str(input_connectivity),
+                '--inter_non_linear_connectivity', str(inter_connectivity),
+                '--non_linear_connectivity', str(recurrent_connectivity),
+                '--spectral_radius', str(sr), '--leaky_rate', str(lr),
+                '--distribution', dist, '--non_linearity', 'identity',
+                '--alpha', str(alpha), '--max_iter', '1000', '--tolerance', '1e-6',
+                '--initial_transients', str(it), '--epsilon', str(epsilon),
+                '--gamma', str(gamma), '--non_linear_scaling', str(rs)
+            ]
 
-            os.system(f'python tests.py --dataset memory_capacity --model esn'
-                      f' --num_layers 2'
-                      f' --circular_non_linear'
-                      f' --seed 5'
-                      f' --batch_training 1 --batch_validation 1 --batch_testing 1'
-                      f' --input_units 1 --non_linear_units {neurons}'
-                      f' --input_non_linear_scaling 1'
-                      f' --inter_non_linear_scaling 1'
-                      f' --input_non_linear_connectivity {input_connectivity}'
-                      f' --inter_non_linear_connectivity {inter_connectivity}'
-                      f' --non_linear_connectivity {recurrent_connectivity}'
-                      f' --spectral_radius {sr} --leaky_rate {lr}'
-                      f' --distribution {dist}'
-                      f' --non_linearity identity'
-                      f' --alpha {alpha} --max_iter 1000 --tolerance 1e-6'
-                      f' --initial_transients {it}'
-                      f' {er_flag}'
-                      f' {bias_flag}'
-                      f' {euler_flag}'
-                      f' --epsilon {epsilon}'
-                      f' --gamma {gamma}'
-                      f' --non_linear_scaling {rs}'
-                      )
+            if er:
+                command.append('--effective_rescaling')
+            if b:
+                command.append('--bias')
+            if e:
+                command.append('--euler')
+
+            subprocess.run(command)
 
 
 if __name__ == '__main__':

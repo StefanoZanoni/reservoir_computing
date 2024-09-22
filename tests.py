@@ -8,9 +8,6 @@ import numpy as np
 
 from argparse import ArgumentParser
 
-from sklearn.linear_model import RidgeClassifier
-from sklearn.preprocessing import StandardScaler
-from sympy.physics.units import action
 from torch.utils.data import random_split
 
 from tqdm import tqdm
@@ -180,8 +177,6 @@ if __name__ == '__main__':
         task = 'classification'
     elif dataset_name == 'memory_capacity':
         task = 'regression'
-
-    trainer = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
 
     if not os.path.exists('./results'):
         os.makedirs('./results')
