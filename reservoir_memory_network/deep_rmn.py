@@ -64,14 +64,20 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
 
         # In case in which all the reservoir layers are concatenated, each level
         # contains units/layers neurons. This is done to keep the number of
-        # _state variables projected to the next layer fixed,
+        # _state variables projected to the next layer fixed;
         # i.e., the number of trainable parameters does not depend on concatenate_non_linear
         if concatenate_non_linear:
-            self.non_linear_units = np.int(total_non_linear_units / number_of_layers)
+            self.non_linear_units = max(1, int(total_non_linear_units / number_of_layers))
+            input_non_linear_connectivity = max(1, int(input_non_linear_connectivity / number_of_layers))
+            inter_non_linear_connectivity = max(1, int(inter_non_linear_connectivity / number_of_layers))
+            non_linear_connectivity = max(1, int(non_linear_connectivity / number_of_layers))
+            memory_non_linear_connectivity = max(1, int(memory_non_linear_connectivity / number_of_layers))
         else:
             self.non_linear_units = total_non_linear_units
         if concatenate_memory:
-            self.memory_units = np.int(total_memory_units / number_of_layers)
+            self.memory_units = max(1, int(total_memory_units / number_of_layers))
+            input_memory_connectivity = max(1, int(input_memory_connectivity / number_of_layers))
+            inter_memory_connectivity = max(1, int(inter_memory_connectivity / number_of_layers))
         else:
             self.memory_units = total_memory_units
 
@@ -114,7 +120,10 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         # all the others:
         # last_h_size may be different for the first layer
         # because of the remainder if concatenate_non_linear=True
-        last_h_size = self.non_linear_units + total_non_linear_units % number_of_layers
+        if total_non_linear_units != self.non_linear_units:
+            last_h_size = self.non_linear_units + total_non_linear_units % number_of_layers
+        else:
+            last_h_size = self.non_linear_units
         for _ in range(number_of_layers - 1):
             reservoir_layers.append(
                 ReservoirMemoryNetwork(
@@ -157,12 +166,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
 
     @torch.no_grad()
     def forward(self, x: torch.Tensor) -> tuple:
-        """ Compute the output of the deep reservoir.
-
-        :param x: Input tensor
-
-        :return: hidden states, last _state
-        """
 
         if not self.just_memory:
             non_linear_states = []

@@ -54,7 +54,10 @@ class DeepEchoStateNetwork(torch.nn.Module):
         # _state variables projected to the next layer fixed;
         # i.e., the number of trainable parameters does not depend on concatenate_non_linear
         if concatenate:
-            self.recurrent_units = np.int(total_units / number_of_layers)
+            self.recurrent_units = max(1, int(total_units / number_of_layers))
+            input_connectivity = max(1, int(input_connectivity / number_of_layers))
+            recurrent_connectivity = max(1, int(recurrent_connectivity / number_of_layers))
+            inter_connectivity = max(1, int(inter_connectivity / number_of_layers))
         else:
             self.recurrent_units = total_units
 

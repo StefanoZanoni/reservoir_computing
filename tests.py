@@ -354,11 +354,22 @@ if __name__ == '__main__':
                                                       drop_last=True)
     elif dataset_name == 'memory_capacity':
         if model_name == 'esn':
-            max_delay = non_linear_units * number_of_layers * 2
+            if concatenate_non_linear:
+                max_delay = non_linear_units * 2
+            else:
+                max_delay = non_linear_units * number_of_layers * 2
         elif model_name == 'rmn' and not just_memory:
-            max_delay = (memory_units + non_linear_units) * number_of_layers * 2
+            if concatenate_non_linear:
+                max_delay = (memory_units + non_linear_units / number_of_layers) * number_of_layers * 2
+            elif concatenate_memory:
+                max_delay = (memory_units / number_of_layers + non_linear_units) * number_of_layers * 2
+            elif concatenate_memory and concatenate_non_linear:
+                max_delay = (memory_units + non_linear_units) * 2
         else:
-            max_delay = memory_units * number_of_layers * 2
+            if concatenate_memory:
+                max_delay = memory_units * 2
+            else:
+                max_delay = memory_units * number_of_layers * 2
 
         mcs_validation = []
         mcs_test = []
@@ -367,7 +378,7 @@ if __name__ == '__main__':
         for run in range(3):
             mc_ks_validation = []
             mc_ks_test = []
-            for k in tqdm(range(max_delay), 'Delay', disable=True):
+            for k in tqdm(range(max_delay), 'Delay', disable=False):
                 k += 1  # k starts from 1
                 training_data = MemoryCapacity(k, training=True)
                 training_data.target = training_data.target[initial_transients:]

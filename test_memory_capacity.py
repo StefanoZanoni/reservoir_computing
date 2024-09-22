@@ -2,6 +2,7 @@ import os
 import subprocess
 
 import numpy as np
+from numpy.ma.core import concatenate
 
 from tqdm import tqdm
 
@@ -18,6 +19,7 @@ def test_esn():
     epsilons = [1e-2, 1e-3, 1e-4]
     gammas = [1e-2, 1e-3, 1e-4]
     recurrent_scaling = [1e-1, 1e-2, 1e-3]
+    concatenate_non_linear = [True, False]
 
     units = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
     for neurons in tqdm(units, desc=f'Testing memory capacity'):
@@ -39,6 +41,7 @@ def test_esn():
             epsilon = np.random.choice(epsilons)
             gamma = np.random.choice(gammas)
             rs = np.random.choice(recurrent_scaling)
+            cnl = np.random.choice(concatenate_non_linear)
 
             command = [
                 'python', 'tests.py', '--dataset', 'memory_capacity', '--model', 'esn',
@@ -62,6 +65,8 @@ def test_esn():
                 command.append('--bias')
             if e:
                 command.append('--euler')
+            if cnl:
+                command.append('--concatenate_non_linear')
 
             subprocess.run(command)
 
