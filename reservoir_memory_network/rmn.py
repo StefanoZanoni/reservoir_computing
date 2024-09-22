@@ -59,7 +59,7 @@ class RMNCell(torch.nn.Module):
                 raise ValueError("Non linear connectivity must be in [1, non_linear_units].")
 
         if memory_units < 1:
-            raise ValueError("Recurrent units must be greater than 0.")
+            raise ValueError("Memory units must be greater than 0.")
         self.memory_units = memory_units
         self.input_memory_scaling = input_memory_scaling
         if input_memory_connectivity > memory_units or input_memory_connectivity < 1:
