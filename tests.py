@@ -21,6 +21,21 @@ os.environ['OMP_NUM_THREADS'] = str(os.cpu_count())
 os.environ['MKL_NUM_THREADS'] = str(os.cpu_count())
 
 
+def generate_results_path(model_name, dataset_name, number_of_layers, non_linear_units, memory_units, euler,
+                          legendre_memory, chebyshev_memory, just_memory):
+    base_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
+    if model_name == 'esn':
+        return base_path + f'{non_linear_units}_euler/' if euler else base_path + f'{non_linear_units}/'
+    elif model_name == 'rmn':
+        memory_type = 'legendre' if legendre_memory else 'chebyshev' if chebyshev_memory else ''
+        euler_suffix = '_euler' if euler else ''
+        if just_memory:
+            return base_path + f'{memory_units}_{memory_type}/'
+        else:
+            return base_path + f'{memory_units}m_{memory_type}_{non_linear_units}nl{euler_suffix}/'
+    return base_path
+
+
 def compute_determination_coefficient(y_true, y_pred):
     y_true = y_true.cpu().numpy()
     y_pred = y_pred
@@ -427,50 +442,8 @@ if __name__ == '__main__':
             validation_determination_coefficients.append(mc_ks_validation)
             test_determination_coefficients.append(mc_ks_test)
 
-        if model_name == 'esn' and euler:
-            results_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/{non_linear_units}_euler/'
-        elif model_name == 'esn' and not euler:
-            results_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/{non_linear_units}/'
-        elif model_name == 'rmn' and legendre_memory and euler:
-            if just_memory:
-                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
-                                f'{memory_units}_legendre/')
-            else:
-                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
-                                f'{memory_units}m_legendre_{non_linear_units}nl_euler/')
-        elif model_name == 'rmn' and legendre_memory and not euler:
-            if just_memory:
-                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
-                                f'{memory_units}_legendre/')
-            else:
-                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
-                                f'{memory_units}m_legendre_{non_linear_units}nl/')
-        elif model_name == 'rmn' and chebyshev_memory and euler:
-            if just_memory:
-                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
-                                f'{memory_units}_chebyshev/')
-            else:
-                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
-                                f'{memory_units}m_chebyshev_{non_linear_units}nl_euler/')
-        elif model_name == 'rmn' and chebyshev_memory and not euler:
-            if just_memory:
-                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
-                                f'{memory_units}_chebyshev/')
-            else:
-                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
-                                f'{memory_units}m_chebyshev_{non_linear_units}nl/')
-        elif model_name == 'rmn' and not legendre_memory and not chebyshev_memory and euler:
-            if just_memory:
-                results_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/{memory_units}/'
-            else:
-                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
-                                f'{memory_units}m_{non_linear_units}nl_euler/')
-        elif model_name == 'rmn' and not legendre_memory and not chebyshev_memory and not euler:
-            if just_memory:
-                results_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/{memory_units}/'
-            else:
-                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
-                                f'{memory_units}m_{non_linear_units}nl/')
+        results_path = generate_results_path(model_name, dataset_name, number_of_layers, non_linear_units,
+                                             memory_units, euler, legendre_memory, chebyshev_memory, just_memory)
 
         if not os.path.exists(results_path):
             os.makedirs(results_path)
