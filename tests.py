@@ -74,6 +74,7 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', type=float, default=1e-3, help='Gamma value for Euler non linear')
     parser.add_argument('--circular_non_linear', action='store_true', help='Whether to use ring topology or not')
     parser.add_argument('--legendre_memory', action='store_true', help='Whether to use Legendre memory or not')
+    parser.add_argument('--chebyshev_memory', action='store_true', help='Whether to use Chebyshev memory or not')
     parser.add_argument('--theta', type=float, default=1.0, help='Theta value for Legendre memory')
     parser.add_argument('--use_last_state', action='store_true', help='Whether to use just the last state or not')
     parser.add_argument('--seed', type=int, default=None, help='Seed for the random number generator')
@@ -156,6 +157,7 @@ if __name__ == '__main__':
     gamma = args.gamma
     non_linear_scaling = args.non_linear_scaling
     legendre_memory = args.legendre_memory
+    chebyshev_memory = args.chebyshev_memory
     theta = args.theta
     use_last_state = args.use_last_state
     seed = args.seed
@@ -378,7 +380,7 @@ if __name__ == '__main__':
         for run in range(3):
             mc_ks_validation = []
             mc_ks_test = []
-            for k in tqdm(range(max_delay), 'Delay', disable=False):
+            for k in tqdm(range(max_delay), 'Delay', disable=True):
                 k += 1  # k starts from 1
                 training_data = MemoryCapacity(k, training=True)
                 training_data.target = training_data.target[initial_transients:]
@@ -425,9 +427,45 @@ if __name__ == '__main__':
             validation_determination_coefficients.append(mc_ks_validation)
             test_determination_coefficients.append(mc_ks_test)
 
-        if model_name == 'esn':
+        if model_name == 'esn' and euler:
+            results_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/{non_linear_units}_euler/'
+        elif model_name == 'esn' and not euler:
             results_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/{non_linear_units}/'
-        elif model_name == 'rmn':
+        elif model_name == 'rmn' and legendre_memory and euler:
+            if just_memory:
+                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
+                                f'{memory_units}_legendre/')
+            else:
+                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
+                                f'{memory_units}m_legendre_{non_linear_units}nl_euler/')
+        elif model_name == 'rmn' and legendre_memory and not euler:
+            if just_memory:
+                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
+                                f'{memory_units}_legendre/')
+            else:
+                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
+                                f'{memory_units}m_legendre_{non_linear_units}nl/')
+        elif model_name == 'rmn' and chebyshev_memory and euler:
+            if just_memory:
+                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
+                                f'{memory_units}_chebyshev/')
+            else:
+                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
+                                f'{memory_units}m_chebyshev_{non_linear_units}nl_euler/')
+        elif model_name == 'rmn' and chebyshev_memory and not euler:
+            if just_memory:
+                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
+                                f'{memory_units}_chebyshev/')
+            else:
+                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
+                                f'{memory_units}m_chebyshev_{non_linear_units}nl/')
+        elif model_name == 'rmn' and not legendre_memory and not chebyshev_memory and euler:
+            if just_memory:
+                results_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/{memory_units}/'
+            else:
+                results_path = (f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
+                                f'{memory_units}m_{non_linear_units}nl_euler/')
+        elif model_name == 'rmn' and not legendre_memory and not chebyshev_memory and not euler:
             if just_memory:
                 results_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/{memory_units}/'
             else:
