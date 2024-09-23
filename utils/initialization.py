@@ -208,6 +208,7 @@ def init_input_kernel(input_units, memory_units, input_connectivity, input_scali
     kernel = sparse_tensor_init(input_units, memory_units, C=input_connectivity) * input_scaling
     return torch.nn.Parameter(kernel, requires_grad=False)
 
+
 def init_memory_kernel(memory_units, theta, legendre):
     if legendre:
         M = legendre_tensor_init(memory_units, theta)
