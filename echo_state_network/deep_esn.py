@@ -19,23 +19,23 @@ class DeepEchoStateNetwork(torch.nn.Module):
                  number_of_layers: int = 1,
                  initial_transients: int = 0,
                  input_scaling: float = 1.0,
+                 recurrent_scaling: float = 1.0,
                  inter_scaling: float = 1.0,
                  spectral_radius: float = 0.9,
-                 leaky_rate: float = 1.0,
+                 leaky_rate: float = 0.5,
                  input_connectivity: int = 1,
                  recurrent_connectivity: int = 1,
                  inter_connectivity: int = 1,
                  bias: bool = True,
+                 bias_scaling: float = None,
                  distribution: str = 'uniform',
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
-                 bias_scaling: float | None,
                  concatenate: bool = False,
-                 circular_recurrent_kernel: bool = True,
+                 circular_recurrent_kernel: bool = False,
                  euler: bool = False,
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
-                 recurrent_scaling: float = 1e-2,
                  alpha: float = 1.0,
                  max_iter: int = 1000,
                  tolerance: float = 1e-4,
@@ -132,6 +132,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
 
     @torch.no_grad()
     def forward(self, x: torch.Tensor) -> tuple:
+
         # list of all the states in all the layers
         states = []
         # List of the states in all the layers for the last time step.
@@ -156,6 +157,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
     @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
             use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
+
         states, ys = [], []
         for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
@@ -184,6 +186,11 @@ class DeepEchoStateNetwork(torch.nn.Module):
     @torch.no_grad()
     def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
               use_last_state: bool = True, disable_progress_bar: bool = False) -> float:
+
+        if standardize:
+            if self.scaler is None:
+                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+
         states, ys = [], []
         for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
@@ -204,8 +211,6 @@ class DeepEchoStateNetwork(torch.nn.Module):
                 ys = ys.T
 
         if standardize:
-            if self.scaler is None:
-                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
             states = self.scaler.transform(states)
 
         return self.readout.score(states, ys)
@@ -213,6 +218,11 @@ class DeepEchoStateNetwork(torch.nn.Module):
     @torch.no_grad()
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
                 use_last_state: bool = True, disable_progress_bar: bool = False) -> np.ndarray:
+
+        if standardize:
+            if self.scaler is None:
+                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+
         states = []
         for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
             x = x.to(device)
@@ -227,8 +237,6 @@ class DeepEchoStateNetwork(torch.nn.Module):
             states = states.reshape(-1, states.shape[2])
 
         if standardize:
-            if self.scaler is None:
-                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
             states = self.scaler.transform(states)
 
         return self.readout.predict(states)

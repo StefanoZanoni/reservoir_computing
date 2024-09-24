@@ -44,25 +44,26 @@ class RMNCell(torch.nn.Module):
                  non_linear_units: int,
                  memory_units: int,
                  *,
+                 memory_scaling: float = 1.0,
+                 non_linear_scaling: float = 1.0,
                  input_memory_scaling: float = 1.0,
                  input_non_linear_scaling: float = 1.0,
                  memory_non_linear_scaling: float = 1.0,
                  spectral_radius: float = 0.9,
-                 leaky_rate: float = 1.0,
+                 leaky_rate: float = 0.5,
                  input_memory_connectivity: int = 1,
                  input_non_linear_connectivity: int = 1,
                  non_linear_connectivity: int = 1,
                  memory_non_linear_connectivity: int = 1,
                  bias: bool = True,
+                 bias_scaling: float = None,
                  distribution: str = 'uniform',
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
-                 bias_scaling: float | None,
-                 circular_non_linear_kernel: bool = True,
+                 circular_non_linear_kernel: bool = False,
                  euler: bool = False,
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
-                 recurrent_scaling: float = 1e-2,
                  legendre: bool = False,
                  theta: float = 1.0,
                  just_memory: bool = False) -> None:
@@ -76,14 +77,14 @@ class RMNCell(torch.nn.Module):
         self.just_memory = just_memory
         self.input_units = input_units
         self.memory_units = memory_units
+        self.memory_scaling = memory_scaling
         self.input_memory_scaling = input_memory_scaling
-        self.input_memory_connectivity = input_memory_connectivity
 
         # Input to memory reservoir kernel
         self.input_memory_kernel = init_input_kernel(input_units, memory_units, input_memory_connectivity,
-                                                     input_memory_scaling)
+                                                     input_memory_scaling, distribution)
         # Memory reservoir kernel
-        self.memory_kernel = init_memory_kernel(memory_units, theta, legendre)
+        self.memory_kernel = init_memory_kernel(memory_units, theta, legendre, memory_scaling)
         self._memory_state = None
         self._forward_function: Callable = self._forward_memory
 
@@ -96,16 +97,18 @@ class RMNCell(torch.nn.Module):
             self.one_minus_leaky_rate = 1 - leaky_rate
             # Input to non-linear reservoir kernel
             self.input_non_linear_kernel = init_input_kernel(input_units, non_linear_units,
-                                                             input_non_linear_connectivity, input_non_linear_scaling)
+                                                             input_non_linear_connectivity, input_non_linear_scaling,
+                                                             distribution)
             # Non-linear reservoir kernel
-            self.non_linear_kernel = init_non_linear_kernel(non_linear_units, non_linear_connectivity,
-                                                            distribution, spectral_radius, leaky_rate,
-                                                            effective_rescaling, circular_non_linear_kernel,
-                                                            euler, gamma, recurrent_scaling)
+            self.non_linear_kernel = init_non_linear_kernel(non_linear_units, non_linear_connectivity, distribution,
+                                                            spectral_radius, leaky_rate, effective_rescaling,
+                                                            circular_non_linear_kernel, euler, gamma,
+                                                            non_linear_scaling)
             self.epsilon = epsilon
             # Memory to non-linear reservoir connectivity
             self.memory_non_linear_kernel = init_input_kernel(memory_units, non_linear_units,
-                                                              memory_non_linear_connectivity, memory_non_linear_scaling)
+                                                              memory_non_linear_connectivity, memory_non_linear_scaling,
+                                                              distribution)
             self.bias = init_bias(bias, non_linear_units, input_non_linear_scaling, bias_scaling)
 
             self.non_linearity = non_linearity
@@ -182,25 +185,26 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                  memory_units: int,
                  *,
                  initial_transients: int = 0,
+                 memory_scaling: float = 1.0,
+                 non_linear_scaling: float = 1.0,
                  input_memory_scaling: float = 1.0,
                  input_non_linear_scaling: float = 1.0,
                  memory_non_linear_scaling: float = 1.0,
                  spectral_radius: float = 0.9,
-                 leaky_rate: float = 1.0,
+                 leaky_rate: float = 0.5,
                  input_memory_connectivity: int = 1,
                  input_non_linear_connectivity: int = 1,
                  non_linear_connectivity: int = 1,
                  memory_non_linear_connectivity: int = 1,
                  bias: bool = True,
+                 bias_scaling: float = None,
                  distribution: str = 'uniform',
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
-                 bias_scaling: float | None,
-                 circular_non_linear_kernel: bool = True,
+                 circular_non_linear_kernel: bool = False,
                  euler: bool = False,
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
-                 recurrent_scaling: float = 1e-2,
                  alpha: float = 1.0,
                  max_iter: int = 1000,
                  tolerance: float = 1e-4,
@@ -213,32 +217,18 @@ class ReservoirMemoryNetwork(torch.nn.Module):
         self.scaler = None
         self.task = task
         self.initial_transients = initial_transients
-        self.net = RMNCell(input_units,
-                           non_linear_units,
-                           memory_units,
-                           input_memory_scaling=input_memory_scaling,
+        self.net = RMNCell(input_units, non_linear_units, memory_units, memory_scaling=memory_scaling,
+                           non_linear_scaling=non_linear_scaling, input_memory_scaling=input_memory_scaling,
                            input_non_linear_scaling=input_non_linear_scaling,
-                           memory_non_linear_scaling=memory_non_linear_scaling,
-                           spectral_radius=spectral_radius,
-                           leaky_rate=leaky_rate,
-                           input_memory_connectivity=input_memory_connectivity,
+                           memory_non_linear_scaling=memory_non_linear_scaling, spectral_radius=spectral_radius,
+                           leaky_rate=leaky_rate, input_memory_connectivity=input_memory_connectivity,
                            input_non_linear_connectivity=input_non_linear_connectivity,
                            non_linear_connectivity=non_linear_connectivity,
-                           memory_non_linear_connectivity=memory_non_linear_connectivity,
-                           bias=bias,
-                           distribution=distribution,
-                           non_linearity=non_linearity,
+                           memory_non_linear_connectivity=memory_non_linear_connectivity, bias=bias,
+                           bias_scaling=bias_scaling, distribution=distribution, non_linearity=non_linearity,
                            effective_rescaling=effective_rescaling,
-                           bias_scaling=bias_scaling,
-                           circular_non_linear_kernel=circular_non_linear_kernel,
-                           euler=euler,
-                           epsilon=epsilon,
-                           gamma=gamma,
-                           recurrent_scaling=recurrent_scaling,
-                           legendre=legendre,
-                           theta=theta,
-                           just_memory=just_memory,
-                           )
+                           circular_non_linear_kernel=circular_non_linear_kernel, euler=euler, epsilon=epsilon,
+                           gamma=gamma, legendre=legendre, theta=theta, just_memory=just_memory)
         if task == 'classification':
             self.readout = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
         elif task == 'regression':
@@ -249,6 +239,7 @@ class ReservoirMemoryNetwork(torch.nn.Module):
     @torch.no_grad()
     def forward(self, x: torch.Tensor) \
             -> tuple[torch.FloatTensor, torch.FloatTensor]:
+
         if not self.just_memory:
             non_linear_states = torch.empty((x.shape[0], x.shape[1], self.net.non_linear_units), dtype=torch.float32,
                                             device=x.device, requires_grad=False)
@@ -280,6 +271,7 @@ class ReservoirMemoryNetwork(torch.nn.Module):
     @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
             use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
+
         states, ys = [], []
         for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
@@ -308,6 +300,11 @@ class ReservoirMemoryNetwork(torch.nn.Module):
     def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
               use_last_state: bool = True, disable_progress_bar: bool = False) \
             -> float:
+
+        if standardize:
+            if self.scaler is None:
+                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+
         states, ys = [], []
         for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
@@ -327,8 +324,6 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                 ys = ys.T
 
         if standardize:
-            if self.scaler is None:
-                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
             states = self.scaler.transform(states)
 
         return self.readout.score(states, ys)
@@ -336,6 +331,11 @@ class ReservoirMemoryNetwork(torch.nn.Module):
     @torch.no_grad()
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
                 use_last_state: bool = True, disable_progress_bar: bool = False) -> np.ndarray:
+
+        if standardize:
+            if self.scaler is None:
+                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+
         states = []
         for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
             x = x.to(device)
@@ -349,8 +349,6 @@ class ReservoirMemoryNetwork(torch.nn.Module):
             states = states.reshape(-1, states.shape[2])
 
         if standardize:
-            if self.scaler is None:
-                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
             states = self.scaler.transform(states)
 
         return self.readout.predict(states)

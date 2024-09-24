@@ -18,13 +18,15 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                  *,
                  number_of_layers: int = 1,
                  initial_transients: int = 0,
+                 memory_scaling: float = 1.0,
+                 non_linear_scaling: float = 1.0,
                  input_memory_scaling: float = 1.0,
                  input_non_linear_scaling: float = 1.0,
                  memory_non_linear_scaling: float = 1.0,
                  inter_non_linear_scaling: float = 1.0,
                  inter_memory_scaling: float = 1.0,
                  spectral_radius: float = 0.9,
-                 leaky_rate: float = 1.0,
+                 leaky_rate: float = 0.5,
                  input_memory_connectivity: int = 1,
                  input_non_linear_connectivity: int = 1,
                  non_linear_connectivity: int = 1,
@@ -32,17 +34,16 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                  inter_non_linear_connectivity: int = 1,
                  inter_memory_connectivity: int = 1,
                  bias: bool = True,
+                 bias_scaling: float = None,
                  distribution: str = 'uniform',
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
-                 bias_scaling: float | None,
                  concatenate_non_linear: bool = False,
                  concatenate_memory: bool = False,
-                 circular_non_linear_kernel: bool = True,
+                 circular_non_linear_kernel: bool = False,
                  euler: bool = False,
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
-                 recurrent_scaling: float = 1e-2,
                  alpha: float = 1.0,
                  max_iter: int = 1000,
                  tolerance: float = 1e-4,
@@ -84,37 +85,33 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         # creates a list of reservoirs
         # the first:
         reservoir_layers = [
-            ReservoirMemoryNetwork(
-                task,
-                input_units,
-                self.non_linear_units,
-                self.memory_units,
-                initial_transients=initial_transients,
-                input_memory_scaling=input_memory_scaling,
-                input_non_linear_scaling=input_non_linear_scaling,
-                memory_non_linear_scaling=memory_non_linear_scaling,
-                spectral_radius=spectral_radius,
-                leaky_rate=leaky_rate,
-                input_memory_connectivity=input_memory_connectivity,
-                input_non_linear_connectivity=input_non_linear_connectivity,
-                non_linear_connectivity=non_linear_connectivity,
-                memory_non_linear_connectivity=memory_non_linear_connectivity,
-                bias=bias,
-                distribution=distribution,
-                non_linearity=non_linearity,
-                effective_rescaling=effective_rescaling,
-                bias_scaling=bias_scaling,
-                circular_non_linear_kernel=circular_non_linear_kernel,
-                euler=euler,
-                epsilon=epsilon,
-                gamma=gamma,
-                recurrent_scaling=recurrent_scaling,
-                alpha=alpha,
-                max_iter=max_iter,
-                tolerance=tolerance,
-                legendre=legendre,
-                theta=theta,
-            )
+            ReservoirMemoryNetwork(task, input_units, self.non_linear_units, self.memory_units,
+                                   initial_transients=initial_transients,
+                                   memory_scaling=memory_scaling,
+                                   non_linear_scaling=non_linear_scaling,
+                                   input_memory_scaling=input_memory_scaling,
+                                   input_non_linear_scaling=input_non_linear_scaling,
+                                   memory_non_linear_scaling=memory_non_linear_scaling,
+                                   spectral_radius=spectral_radius,
+                                   leaky_rate=leaky_rate,
+                                   input_memory_connectivity=input_memory_connectivity,
+                                   input_non_linear_connectivity=input_non_linear_connectivity,
+                                   non_linear_connectivity=non_linear_connectivity,
+                                   memory_non_linear_connectivity=memory_non_linear_connectivity,
+                                   bias=bias,
+                                   bias_scaling=bias_scaling,
+                                   distribution=distribution,
+                                   non_linearity=non_linearity,
+                                   effective_rescaling=effective_rescaling,
+                                   circular_non_linear_kernel=circular_non_linear_kernel,
+                                   euler=euler,
+                                   epsilon=epsilon,
+                                   gamma=gamma,
+                                   alpha=alpha,
+                                   max_iter=max_iter,
+                                   tolerance=tolerance,
+                                   legendre=legendre,
+                                   theta=theta)
         ]
 
         # all the others:
@@ -126,36 +123,32 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             last_h_size = self.non_linear_units
         for _ in range(number_of_layers - 1):
             reservoir_layers.append(
-                ReservoirMemoryNetwork(
-                    task,
-                    last_h_size,
-                    self.non_linear_units,
-                    self.memory_units,
-                    input_memory_scaling=inter_memory_scaling,
-                    input_non_linear_scaling=inter_non_linear_scaling,
-                    memory_non_linear_scaling=memory_non_linear_scaling,
-                    spectral_radius=spectral_radius,
-                    leaky_rate=leaky_rate,
-                    input_memory_connectivity=inter_memory_connectivity,
-                    input_non_linear_connectivity=inter_non_linear_connectivity,
-                    non_linear_connectivity=non_linear_connectivity,
-                    memory_non_linear_connectivity=memory_non_linear_connectivity,
-                    bias=bias,
-                    distribution=distribution,
-                    non_linearity=non_linearity,
-                    effective_rescaling=effective_rescaling,
-                    bias_scaling=bias_scaling,
-                    circular_non_linear_kernel=circular_non_linear_kernel,
-                    euler=euler,
-                    epsilon=epsilon,
-                    gamma=gamma,
-                    recurrent_scaling=recurrent_scaling,
-                    alpha=alpha,
-                    max_iter=max_iter,
-                    tolerance=tolerance,
-                    legendre=legendre,
-                    theta=theta,
-                )
+                ReservoirMemoryNetwork(task, last_h_size, self.non_linear_units, self.memory_units,
+                                       memory_scaling=memory_scaling,
+                                       non_linear_scaling=non_linear_scaling,
+                                       input_memory_scaling=inter_memory_scaling,
+                                       input_non_linear_scaling=inter_non_linear_scaling,
+                                       memory_non_linear_scaling=memory_non_linear_scaling,
+                                       spectral_radius=spectral_radius,
+                                       leaky_rate=leaky_rate,
+                                       input_memory_connectivity=inter_memory_connectivity,
+                                       input_non_linear_connectivity=inter_non_linear_connectivity,
+                                       non_linear_connectivity=non_linear_connectivity,
+                                       memory_non_linear_connectivity=memory_non_linear_connectivity,
+                                       bias=bias,
+                                       bias_scaling=bias_scaling,
+                                       distribution=distribution,
+                                       non_linearity=non_linearity,
+                                       effective_rescaling=effective_rescaling,
+                                       circular_non_linear_kernel=circular_non_linear_kernel,
+                                       euler=euler,
+                                       epsilon=epsilon,
+                                       gamma=gamma,
+                                       alpha=alpha,
+                                       max_iter=max_iter,
+                                       tolerance=tolerance,
+                                       legendre=legendre,
+                                       theta=theta)
             )
             last_h_size = self.non_linear_units
         self.reservoir = torch.nn.ModuleList(reservoir_layers)
@@ -208,6 +201,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
     @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
             use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
+
         states, ys = [], []
         for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
@@ -234,6 +228,11 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
     @torch.no_grad()
     def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
               use_last_state: bool = True, disable_progress_bar: bool = False) -> float:
+
+        if standardize:
+            if self.scaler is None:
+                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+
         states, ys = [], []
         for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
@@ -252,8 +251,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                 ys = ys.T
 
         if standardize:
-            if self.scaler is None:
-                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
             states = self.scaler.transform(states)
 
         return self.readout.score(states, ys)
@@ -261,6 +258,11 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
     @torch.no_grad()
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
                 use_last_state: bool = True, disable_progress_bar: bool = False) -> np.ndarray:
+
+        if standardize:
+            if self.scaler is None:
+                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+
         states = []
         for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
             x = x.to(device)
@@ -273,8 +275,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             states = states.reshape(-1, states.shape[2])
 
         if standardize:
-            if self.scaler is None:
-                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
             states = self.scaler.transform(states)
 
         return self.readout.predict(states)

@@ -34,21 +34,22 @@ class ReservoirCell(torch.nn.Module):
                  recurrent_units: int,
                  *,
                  input_scaling: float = 1.0,
+                 recurrent_scaling: float = 1.0,
                  spectral_radius: float = 0.9,
-                 leaky_rate: float = 1.0,
+                 leaky_rate: float = 0.5,
                  input_connectivity: int = 1,
                  recurrent_connectivity: int = 1,
                  bias: bool = True,
+                 bias_scaling: float = None,
                  distribution: str = 'uniform',
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
-                 bias_scaling: float | None = None,
-                 circular_recurrent_kernel: bool = True,
+                 circular_recurrent_kernel: bool = False,
                  euler: bool = False,
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
-                 recurrent_scaling: float = 1e-2,
                  ) -> None:
+
         super().__init__()
 
         validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity,
@@ -63,12 +64,12 @@ class ReservoirCell(torch.nn.Module):
         self.input_connectivity = input_connectivity
         self.recurrent_connectivity = recurrent_connectivity
 
-        self.input_kernel = init_input_kernel(input_units, recurrent_units, input_connectivity, input_scaling)
+        self.input_kernel = init_input_kernel(input_units, recurrent_units, input_connectivity, input_scaling,
+                                              distribution)
         self.recurrent_kernel = init_non_linear_kernel(recurrent_units, recurrent_connectivity, distribution,
                                                        spectral_radius, leaky_rate, effective_rescaling,
                                                        circular_recurrent_kernel, euler, gamma, recurrent_scaling)
         self.bias = init_bias(bias, recurrent_units, input_scaling, bias_scaling)
-
         self.epsilon = epsilon
         self.non_linearity = non_linearity
         self._non_linear_function: Callable = torch.tanh if non_linearity == 'tanh' else lambda x: x
@@ -114,20 +115,20 @@ class EchoStateNetwork(torch.nn.Module):
                  *,
                  initial_transients: int = 0,
                  input_scaling: float = 1.0,
-                 spectral_radius: float = 0.99,
-                 leaky_rate: float = 1.0,
+                 recurrent_scaling: float = 1.0,
+                 spectral_radius: float = 0.9,
+                 leaky_rate: float = 0.5,
                  input_connectivity: int = 1,
                  recurrent_connectivity: int = 1,
                  bias: bool = True,
+                 bias_scaling: float = None,
                  distribution: str = 'uniform',
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
-                 bias_scaling: float | None,
-                 circular_recurrent_kernel: bool = True,
+                 circular_recurrent_kernel: bool = False,
                  euler: bool = False,
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
-                 recurrent_scaling: float = 1e-2,
                  alpha: float = 1.0,
                  max_iter: int = 1000,
                  tolerance: float = 1e-4,
@@ -161,6 +162,7 @@ class EchoStateNetwork(torch.nn.Module):
 
     @torch.no_grad()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+
         states = torch.empty((x.shape[0], x.shape[1], self.net.recurrent_units), dtype=torch.float32,
                              requires_grad=False, device=x.device)
 
@@ -178,6 +180,7 @@ class EchoStateNetwork(torch.nn.Module):
     @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
             use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
+
         states, ys = [], []
         for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
@@ -205,6 +208,11 @@ class EchoStateNetwork(torch.nn.Module):
     @torch.no_grad()
     def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
               use_last_state: bool = True, disable_progress_bar: bool = False) -> float:
+
+        if standardize:
+            if self.scaler is None:
+                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+
         states, ys = [], []
         for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
@@ -224,8 +232,6 @@ class EchoStateNetwork(torch.nn.Module):
                 ys = ys.T
 
         if standardize:
-            if self.scaler is None:
-                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
             states = self.scaler.transform(states)
 
         return self.readout.score(states, ys)
@@ -233,6 +239,11 @@ class EchoStateNetwork(torch.nn.Module):
     @torch.no_grad()
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
                 use_last_state: bool = True, disable_progress_bar: bool = False) -> np.ndarray:
+
+        if standardize:
+            if self.scaler is None:
+                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+
         states = []
         for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
             x = x.to(device)
@@ -246,8 +257,6 @@ class EchoStateNetwork(torch.nn.Module):
             states = states.reshape(-1, states.shape[2])
 
         if standardize:
-            if self.scaler is None:
-                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
             states = self.scaler.transform(states)
 
         return self.readout.predict(states)
