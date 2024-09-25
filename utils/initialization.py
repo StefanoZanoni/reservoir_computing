@@ -176,7 +176,7 @@ def init_bias(bias, non_linear_units, input_scaling, bias_scaling):
         tensor = (2 * torch.rand(non_linear_units) - 1) * bias_scaling
         tensor = tensor.to_dense()
     else:
-        tensor = torch.zeros(non_linear_units, layout=torch.sparse_coo)
+        tensor = torch.zeros(non_linear_units).to_dense()
     return torch.nn.Parameter(tensor, requires_grad=False)
 
 
