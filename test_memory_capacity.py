@@ -22,17 +22,15 @@ def test_rmn():
     input_non_linear_scaling = np.arange(0.1, 3.1, 0.1)
     input_memory_scaling = np.arange(0.1, 3.1, 0.1)
     memory_non_linear_scaling = np.arange(0.1, 3.1, 0.1)
-    inter_non_linear_scaling = np.arange(0.1, 3.1, 0.1)
-    inter_memory_scaling = np.arange(0.1, 3.1, 0.1)
 
     units = [1, 2, 4, 8, 16]
-    for neurons in tqdm(units, desc=f'Testing RMN memory capacity'):
+    for neurons in tqdm(units, desc=f'Testing RMN memory capacity', disable=True):
+
+        thetas = np.arange(neurons, neurons * 8, 1)
 
         input_memory_connectivity = np.arange(1, neurons + 1, 1)
-        inter_memory_connectivity = np.arange(1, neurons + 1, 1)
         input_non_linear_connectivity = np.arange(1, neurons + 1, 1)
         non_linear_connectivity = np.arange(1, neurons + 1, 1)
-        inter_non_linear_connectivity = np.arange(1, neurons + 1, 1)
         memory_non_linear_connectivity = np.arange(1, neurons + 1, 1)
 
         for _ in range(10):
@@ -48,8 +46,6 @@ def test_rmn():
             input_m_connectivity = np.random.choice(input_memory_connectivity)
             nl_connectivity = np.random.choice(non_linear_connectivity)
             m_nl_connectivity = np.random.choice(memory_non_linear_connectivity)
-            inter_nl_connectivity = np.random.choice(inter_non_linear_connectivity)
-            inter_m_connectivity = np.random.choice(inter_memory_connectivity)
 
             epsilon = np.random.choice(epsilons)
             gamma = np.random.choice(gammas)
@@ -59,9 +55,9 @@ def test_rmn():
             ms = np.random.choice(memory_scaling)
             inms = np.random.choice(input_memory_scaling)
             mns = np.random.choice(memory_non_linear_scaling)
-            ins = np.random.choice(inter_non_linear_scaling)
-            ims = np.random.choice(inter_memory_scaling)
             inls = np.random.choice(input_non_linear_scaling)
+
+            theta = np.random.choice(thetas)
 
             command = [
                 'python', 'tests.py',
@@ -78,20 +74,16 @@ def test_rmn():
                 '--memory_units', str(neurons),
 
                 '--input_non_linear_scaling', str(inls),
-                '--inter_non_linear_scaling', str(ins),
                 '--input_memory_scaling', str(inms),
                 '--memory_non_linear_scaling', str(mns),
-                '--inter_memory_scaling', str(ims),
                 '--non_linear_scaling', str(nls),
-                '--memory_scaling', str(ms),
+                '--memory_scaling', '1',
                 '--bias_scaling', str(bs),
 
                 '--input_memory_connectivity', str(input_m_connectivity),
                 '--input_non_linear_connectivity', str(input_nl_connectivity),
-                '--inter_non_linear_connectivity', str(inter_nl_connectivity),
                 '--non_linear_connectivity', str(nl_connectivity),
                 '--memory_non_linear_connectivity', str(m_nl_connectivity),
-                '--inter_memory_connectivity', str(inter_m_connectivity),
 
                 '--spectral_radius', str(sr),
                 '--leaky_rate', str(lr),
@@ -127,20 +119,16 @@ def test_rmn():
                 '--memory_units', str(neurons),
 
                 '--input_non_linear_scaling', str(inls),
-                '--inter_non_linear_scaling', str(ins),
                 '--input_memory_scaling', str(inms),
                 '--memory_non_linear_scaling', str(mns),
-                '--inter_memory_scaling', str(ims),
                 '--non_linear_scaling', str(nls),
-                '--memory_scaling', str(ms),
+                '--memory_scaling', '1',
                 '--bias_scaling', str(bs),
 
                 '--input_memory_connectivity', str(input_m_connectivity),
                 '--input_non_linear_connectivity', str(input_nl_connectivity),
-                '--inter_non_linear_connectivity', str(inter_nl_connectivity),
                 '--non_linear_connectivity', str(nl_connectivity),
                 '--memory_non_linear_connectivity', str(m_nl_connectivity),
-                '--inter_memory_connectivity', str(inter_m_connectivity),
 
                 '--spectral_radius', str(sr),
                 '--leaky_rate', str(lr),
@@ -153,7 +141,7 @@ def test_rmn():
                 '--epsilon', str(epsilon),
                 '--gamma', str(gamma),
                 '--legendre_memory',
-                '--theta', str(10000 + (neurons * 2 * 2)),
+                '--theta', str(theta),
             ]
 
             if er:
@@ -178,20 +166,16 @@ def test_rmn():
                 '--memory_units', str(neurons),
 
                 '--input_non_linear_scaling', str(inls),
-                '--inter_non_linear_scaling', str(ins),
                 '--input_memory_scaling', str(inms),
                 '--memory_non_linear_scaling', str(mns),
-                '--inter_memory_scaling', str(ims),
                 '--non_linear_scaling', str(nls),
-                '--memory_scaling', str(ms),
+                '--memory_scaling', '1',
                 '--bias_scaling', str(bs),
 
                 '--input_memory_connectivity', str(input_m_connectivity),
                 '--input_non_linear_connectivity', str(input_nl_connectivity),
-                '--inter_non_linear_connectivity', str(inter_nl_connectivity),
                 '--non_linear_connectivity', str(nl_connectivity),
                 '--memory_non_linear_connectivity', str(m_nl_connectivity),
-                '--inter_memory_connectivity', str(inter_m_connectivity),
 
                 '--spectral_radius', str(sr),
                 '--leaky_rate', str(lr),
@@ -228,20 +212,16 @@ def test_rmn():
                 '--memory_units', str(neurons),
 
                 '--input_non_linear_scaling', str(inls),
-                '--inter_non_linear_scaling', str(ins),
                 '--input_memory_scaling', str(inms),
                 '--memory_non_linear_scaling', str(mns),
-                '--inter_memory_scaling', str(ims),
                 '--non_linear_scaling', str(nls),
-                '--memory_scaling', str(ms),
+                '--memory_scaling', '1',
                 '--bias_scaling', str(bs),
 
                 '--input_memory_connectivity', str(input_m_connectivity),
                 '--input_non_linear_connectivity', str(input_nl_connectivity),
-                '--inter_non_linear_connectivity', str(inter_nl_connectivity),
                 '--non_linear_connectivity', str(nl_connectivity),
                 '--memory_non_linear_connectivity', str(m_nl_connectivity),
-                '--inter_memory_connectivity', str(inter_m_connectivity),
 
                 '--spectral_radius', str(sr),
                 '--leaky_rate', str(lr),
@@ -255,7 +235,7 @@ def test_rmn():
                 '--gamma', str(gamma),
                 '--legendre_memory',
                 '--just_memory',
-                '--theta', str(10000 + (neurons * 2))
+                '--theta', str(theta)
             ]
 
             if er:

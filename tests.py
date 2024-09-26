@@ -27,12 +27,12 @@ def generate_results_path(model_name, dataset_name, number_of_layers, non_linear
     if model_name == 'esn':
         return base_path + f'{non_linear_units}_euler/' if euler else base_path + f'{non_linear_units}/'
     elif model_name == 'rmn':
-        memory_type = 'legendre' if legendre_memory else 'chebyshev' if chebyshev_memory else ''
+        memory_type = '_legendre' if legendre_memory else '_chebyshev' if chebyshev_memory else ''
         euler_suffix = '_euler' if euler else ''
         if just_memory:
-            return base_path + f'{memory_units}_{memory_type}/'
+            return base_path + f'{memory_units}m{memory_type}/'
         else:
-            return base_path + f'{memory_units}m_{memory_type}_{non_linear_units}nl{euler_suffix}/'
+            return base_path + f'{memory_units}m{memory_type}_{non_linear_units}nl{euler_suffix}/'
     return base_path
 
 
@@ -487,13 +487,13 @@ if __name__ == '__main__':
                                                               drop_last=False)
 
                 # training
-                model.fit(training_dataloader, device, standardize=False, use_last_state=use_last_state,
+                model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state,
                           disable_progress_bar=True)
 
                 # validation
                 model.reset_state()
                 predictions = (
-                    model.predict(validation_dataloader, device, standardize=False,
+                    model.predict(validation_dataloader, device, standardize=True,
                                   use_last_state=use_last_state, disable_progress_bar=True)).reshape(-1)
                 mc_k = compute_determination_coefficient(validation_data.target, predictions)
                 mc_ks_validation.append(mc_k)
@@ -501,7 +501,7 @@ if __name__ == '__main__':
                 # test
                 model.reset_state()
                 predictions = (
-                    model.predict(test_dataloader, device, standardize=False, use_last_state=use_last_state,
+                    model.predict(test_dataloader, device, standardize=True, use_last_state=use_last_state,
                                   disable_progress_bar=True)).reshape(-1)
                 mc_k = compute_determination_coefficient(test_data.target, predictions)
                 mc_ks_test.append(mc_k)
