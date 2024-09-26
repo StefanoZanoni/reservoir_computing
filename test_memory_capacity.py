@@ -11,7 +11,7 @@ def test_rmn():
     spectral_radius = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 0.999]
     leaky_rates = np.arange(0.1, 1.1, 0.1)
     distributions = ['uniform', 'normal', 'fixed']
-    alphas = [1e-1, 1]
+    alphas = [1e-3, 1e-2, 1e-1, 1]
     effective_rescaling = [True, False]
     bias = [True, False]
     bias_scaling = np.arange(0.1, 3.1, 0.1)
@@ -153,7 +153,7 @@ def test_rmn():
                 '--epsilon', str(epsilon),
                 '--gamma', str(gamma),
                 '--legendre_memory'
-                '--theta', str(10000 + (units * 2 * 2))
+                '--theta', str(10000 + (neurons * 2 * 2))
             ]
 
             if er:
@@ -255,7 +255,7 @@ def test_rmn():
                 '--gamma', str(gamma),
                 '--legendre_memory'
                 '--just_memory'
-                '--theta', str(10000 + (units * 2))
+                '--theta', str(10000 + (neurons * 2))
             ]
 
             if er:
@@ -270,7 +270,7 @@ def test_esn():
     spectral_radius = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 0.999]
     leaky_rates = np.arange(0.1, 1.1, 0.1)
     distributions = ['uniform', 'normal', 'fixed']
-    alphas = [1e-1, 1]
+    alphas = [1e-3, 1e-2, 1e-1, 1]
     effective_rescaling = [True, False]
     bias = [True, False]
     bias_scaling = np.arange(0.1, 3.1, 0.1)
