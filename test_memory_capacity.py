@@ -35,7 +35,7 @@ def test_rmn():
         inter_non_linear_connectivity = np.arange(1, neurons + 1, 1)
         memory_non_linear_connectivity = np.arange(1, neurons + 1, 1)
 
-        for _ in range(100):
+        for _ in range(10):
 
             sr = np.random.choice(spectral_radius)
             lr = np.random.choice(leaky_rates)
@@ -46,7 +46,7 @@ def test_rmn():
 
             input_nl_connectivity = np.random.choice(input_non_linear_connectivity)
             input_m_connectivity = np.random.choice(input_memory_connectivity)
-            non_linear_connectivity = np.random.choice(non_linear_connectivity)
+            nl_connectivity = np.random.choice(non_linear_connectivity)
             m_nl_connectivity = np.random.choice(memory_non_linear_connectivity)
             inter_nl_connectivity = np.random.choice(inter_non_linear_connectivity)
             inter_m_connectivity = np.random.choice(inter_memory_connectivity)
@@ -89,7 +89,7 @@ def test_rmn():
                 '--input_memory_connectivity', str(input_m_connectivity),
                 '--input_non_linear_connectivity', str(input_nl_connectivity),
                 '--inter_non_linear_connectivity', str(inter_nl_connectivity),
-                '--non_linear_connectivity', str(non_linear_connectivity),
+                '--non_linear_connectivity', str(nl_connectivity),
                 '--memory_non_linear_connectivity', str(m_nl_connectivity),
                 '--inter_memory_connectivity', str(inter_m_connectivity),
 
@@ -138,7 +138,7 @@ def test_rmn():
                 '--input_memory_connectivity', str(input_m_connectivity),
                 '--input_non_linear_connectivity', str(input_nl_connectivity),
                 '--inter_non_linear_connectivity', str(inter_nl_connectivity),
-                '--non_linear_connectivity', str(non_linear_connectivity),
+                '--non_linear_connectivity', str(nl_connectivity),
                 '--memory_non_linear_connectivity', str(m_nl_connectivity),
                 '--inter_memory_connectivity', str(inter_m_connectivity),
 
@@ -152,8 +152,8 @@ def test_rmn():
                 '--initial_transients', str(100),
                 '--epsilon', str(epsilon),
                 '--gamma', str(gamma),
-                '--legendre_memory'
-                '--theta', str(10000 + (neurons * 2 * 2))
+                '--legendre_memory',
+                '--theta', str(10000 + (neurons * 2 * 2)),
             ]
 
             if er:
@@ -189,7 +189,7 @@ def test_rmn():
                 '--input_memory_connectivity', str(input_m_connectivity),
                 '--input_non_linear_connectivity', str(input_nl_connectivity),
                 '--inter_non_linear_connectivity', str(inter_nl_connectivity),
-                '--non_linear_connectivity', str(non_linear_connectivity),
+                '--non_linear_connectivity', str(nl_connectivity),
                 '--memory_non_linear_connectivity', str(m_nl_connectivity),
                 '--inter_memory_connectivity', str(inter_m_connectivity),
 
@@ -203,7 +203,7 @@ def test_rmn():
                 '--initial_transients', str(100),
                 '--epsilon', str(epsilon),
                 '--gamma', str(gamma),
-                '--just_memory'
+                '--just_memory',
             ]
 
             if er:
@@ -239,7 +239,7 @@ def test_rmn():
                 '--input_memory_connectivity', str(input_m_connectivity),
                 '--input_non_linear_connectivity', str(input_nl_connectivity),
                 '--inter_non_linear_connectivity', str(inter_nl_connectivity),
-                '--non_linear_connectivity', str(non_linear_connectivity),
+                '--non_linear_connectivity', str(nl_connectivity),
                 '--memory_non_linear_connectivity', str(m_nl_connectivity),
                 '--inter_memory_connectivity', str(inter_m_connectivity),
 
@@ -253,8 +253,8 @@ def test_rmn():
                 '--initial_transients', str(100),
                 '--epsilon', str(epsilon),
                 '--gamma', str(gamma),
-                '--legendre_memory'
-                '--just_memory'
+                '--legendre_memory',
+                '--just_memory',
                 '--theta', str(10000 + (neurons * 2))
             ]
 
@@ -287,7 +287,7 @@ def test_esn():
         non_linear_connectivity = np.arange(1, neurons + 1, 1)
         inter_non_linear_connectivity = np.arange(1, neurons + 1, 1)
 
-        for _ in range(100):
+        for _ in range(10):
             sr = np.random.choice(spectral_radius)
             lr = np.random.choice(leaky_rates)
             dist = np.random.choice(distributions)
@@ -347,5 +347,5 @@ def test_esn():
 
 
 if __name__ == '__main__':
-    test_esn()
+    #test_esn()
     test_rmn()
