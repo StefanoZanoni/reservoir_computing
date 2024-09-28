@@ -23,8 +23,8 @@ def test_rmn():
     input_memory_scaling = np.arange(0.1, 3.1, 0.1)
     memory_non_linear_scaling = np.arange(0.1, 3.1, 0.1)
 
-    units = [1, 2, 4, 8, 16]
-    for neurons in tqdm(units, desc=f'Testing RMN memory capacity', disable=True):
+    units = [1, 2, 4, 8, 16, 32]
+    for neurons in tqdm(units, desc=f'Testing RMN memory capacity', disable=False):
 
         thetas = np.arange(neurons, neurons * 8, 1)
 
@@ -33,7 +33,7 @@ def test_rmn():
         non_linear_connectivity = np.arange(1, neurons + 1, 1)
         memory_non_linear_connectivity = np.arange(1, neurons + 1, 1)
 
-        for _ in range(10):
+        for _ in tqdm(range(10), disable=True):
 
             sr = np.random.choice(spectral_radius)
             lr = np.random.choice(leaky_rates)
@@ -77,7 +77,7 @@ def test_rmn():
                 '--input_memory_scaling', str(inms),
                 '--memory_non_linear_scaling', str(mns),
                 '--non_linear_scaling', str(nls),
-                '--memory_scaling', '1',
+                '--memory_scaling', str(ms),
                 '--bias_scaling', str(bs),
 
                 '--input_memory_connectivity', str(input_m_connectivity),
@@ -122,7 +122,7 @@ def test_rmn():
                 '--input_memory_scaling', str(inms),
                 '--memory_non_linear_scaling', str(mns),
                 '--non_linear_scaling', str(nls),
-                '--memory_scaling', '1',
+                '--memory_scaling', str(ms),
                 '--bias_scaling', str(bs),
 
                 '--input_memory_connectivity', str(input_m_connectivity),
@@ -169,7 +169,7 @@ def test_rmn():
                 '--input_memory_scaling', str(inms),
                 '--memory_non_linear_scaling', str(mns),
                 '--non_linear_scaling', str(nls),
-                '--memory_scaling', '1',
+                '--memory_scaling', str(ms),
                 '--bias_scaling', str(bs),
 
                 '--input_memory_connectivity', str(input_m_connectivity),
@@ -215,7 +215,7 @@ def test_rmn():
                 '--input_memory_scaling', str(inms),
                 '--memory_non_linear_scaling', str(mns),
                 '--non_linear_scaling', str(nls),
-                '--memory_scaling', '1',
+                '--memory_scaling', str(ms),
                 '--bias_scaling', str(bs),
 
                 '--input_memory_connectivity', str(input_m_connectivity),
@@ -260,14 +260,14 @@ def test_esn():
     input_non_linear_scaling = np.arange(0.1, 3.1, 0.1)
     inter_non_linear_scaling = np.arange(0.1, 3.1, 0.1)
 
-    units = [1, 2, 4, 8, 16]
-    for neurons in tqdm(units, desc=f'Testing ESN memory capacity'):
+    units = [1, 2, 4, 8, 16, 32]
+    for neurons in tqdm(units, desc=f'Testing ESN memory capacity', disable=False):
 
         input_non_linear_connectivity = np.arange(1, neurons + 1, 1)
         non_linear_connectivity = np.arange(1, neurons + 1, 1)
         inter_non_linear_connectivity = np.arange(1, neurons + 1, 1)
 
-        for _ in range(10):
+        for _ in tqdm(range(10), disable=True):
             sr = np.random.choice(spectral_radius)
             lr = np.random.choice(leaky_rates)
             dist = np.random.choice(distributions)
@@ -327,5 +327,5 @@ def test_esn():
 
 
 if __name__ == '__main__':
-    #test_esn()
+    test_esn()
     test_rmn()
