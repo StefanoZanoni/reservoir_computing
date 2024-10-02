@@ -36,6 +36,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                  bias: bool = True,
                  bias_scaling: float = None,
                  distribution: str = 'uniform',
+                 signs_from: str = 'pi',
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
                  concatenate_non_linear: bool = False,
@@ -101,6 +102,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                                    bias=bias,
                                    bias_scaling=bias_scaling,
                                    distribution=distribution,
+                                   signs_from=signs_from,
                                    non_linearity=non_linearity,
                                    effective_rescaling=effective_rescaling,
                                    circular_non_linear_kernel=circular_non_linear_kernel,
@@ -138,6 +140,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                                        bias=bias,
                                        bias_scaling=bias_scaling,
                                        distribution=distribution,
+                                       signs_from=signs_from,
                                        non_linearity=non_linearity,
                                        effective_rescaling=effective_rescaling,
                                        circular_non_linear_kernel=circular_non_linear_kernel,
@@ -205,7 +208,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         states, ys = [], []
         for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
-            state = self(x)[3 if self.just_memory else 1][-1] if use_last_state\
+            state = self(x)[3 if self.just_memory else 1][-1] if use_last_state \
                 else self(x)[2 if self.just_memory else 0]
             states.append(state.cpu().numpy())
             ys.append(y.cpu().numpy())

@@ -58,6 +58,7 @@ class RMNCell(torch.nn.Module):
                  bias: bool = True,
                  bias_scaling: float = None,
                  distribution: str = 'uniform',
+                 signs_from: str = 'pi',
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
                  circular_non_linear_kernel: bool = False,
@@ -82,7 +83,7 @@ class RMNCell(torch.nn.Module):
 
         # Input to memory reservoir kernel
         self.input_memory_kernel = init_input_kernel(input_units, memory_units, input_memory_connectivity,
-                                                     input_memory_scaling, distribution)
+                                                     input_memory_scaling, 'fixed', signs_from=signs_from)
         # Memory reservoir kernel
         self.memory_kernel = init_memory_kernel(memory_units, theta, legendre, memory_scaling)
         self._memory_state = None
@@ -199,6 +200,7 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                  bias: bool = True,
                  bias_scaling: float = None,
                  distribution: str = 'uniform',
+                 signs_from: str = 'pi',
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
                  circular_non_linear_kernel: bool = False,
@@ -225,8 +227,8 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                            input_non_linear_connectivity=input_non_linear_connectivity,
                            non_linear_connectivity=non_linear_connectivity,
                            memory_non_linear_connectivity=memory_non_linear_connectivity, bias=bias,
-                           bias_scaling=bias_scaling, distribution=distribution, non_linearity=non_linearity,
-                           effective_rescaling=effective_rescaling,
+                           bias_scaling=bias_scaling, distribution=distribution, signs_from=signs_from,
+                           non_linearity=non_linearity, effective_rescaling=effective_rescaling,
                            circular_non_linear_kernel=circular_non_linear_kernel, euler=euler, epsilon=epsilon,
                            gamma=gamma, legendre=legendre, theta=theta, just_memory=just_memory)
         if task == 'classification':

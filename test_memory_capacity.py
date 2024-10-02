@@ -11,6 +11,7 @@ def test_rmn():
     spectral_radius = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 0.999]
     leaky_rates = np.arange(0.1, 1.1, 0.1)
     distributions = ['uniform', 'normal', 'fixed']
+    signs_from = ['pi', 'e', 'logistic', 'random']
     alphas = [1e-3, 1e-2, 1e-1, 1]
     effective_rescaling = [True, False]
     bias = [True, False]
@@ -38,6 +39,7 @@ def test_rmn():
             sr = np.random.choice(spectral_radius)
             lr = np.random.choice(leaky_rates)
             dist = np.random.choice(distributions)
+            signs = np.random.choice(signs_from)
             alpha = np.random.choice(alphas)
             er = np.random.choice(effective_rescaling)
             b = np.random.choice(bias)
@@ -88,6 +90,7 @@ def test_rmn():
                 '--spectral_radius', str(sr),
                 '--leaky_rate', str(lr),
                 '--distribution', dist,
+                '--signs_from', signs,
                 '--non_linearity', 'identity',
                 '--alpha', str(alpha),
                 '--max_iter', '2000',
@@ -133,6 +136,7 @@ def test_rmn():
                 '--spectral_radius', str(sr),
                 '--leaky_rate', str(lr),
                 '--distribution', dist,
+                '--signs_from', signs,
                 '--non_linearity', 'identity',
                 '--alpha', str(alpha),
                 '--max_iter', '2000',
@@ -180,6 +184,7 @@ def test_rmn():
                 '--spectral_radius', str(sr),
                 '--leaky_rate', str(lr),
                 '--distribution', dist,
+                '--signs_from', signs,
                 '--non_linearity', 'identity',
                 '--alpha', str(alpha),
                 '--max_iter', '2000',
@@ -226,6 +231,7 @@ def test_rmn():
                 '--spectral_radius', str(sr),
                 '--leaky_rate', str(lr),
                 '--distribution', dist,
+                '--signs_from', signs,
                 '--non_linearity', 'identity',
                 '--alpha', str(alpha),
                 '--max_iter', '2000',
@@ -327,5 +333,5 @@ def test_esn():
 
 
 if __name__ == '__main__':
-    test_esn()
+    #test_esn()
     test_rmn()

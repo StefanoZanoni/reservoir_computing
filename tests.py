@@ -83,6 +83,7 @@ if __name__ == '__main__':
     parser.add_argument('--leaky_rate', type=float, default=0.5, help='Leaky rate')
     parser.add_argument('--bias', action='store_true', help='Whether to use bias or not')
     parser.add_argument('--distribution', type=str, default='uniform', help='Weights distribution to use')
+    parser.add_argument('--signs_from', type=str, default='pi', help='Signs source to use')
     parser.add_argument('--non_linearity', type=str, default='tanh', help='Non-linearity to use')
     parser.add_argument('--effective_rescaling', action='store_true', help='Whether to use effective rescaling or not')
     parser.add_argument('--euler', action='store_true', help='Whether to use Euler non linear or not')
@@ -172,6 +173,7 @@ if __name__ == '__main__':
     bias_scaling = args.bias_scaling
 
     distribution = args.distribution
+    signs_from = args.signs_from
     non_linearity = args.non_linearity
     circular_non_linear = args.circular_non_linear
 
@@ -330,6 +332,7 @@ if __name__ == '__main__':
                            'effective_rescaling': effective_rescaling,
 
                            'distribution': distribution,
+                           'signs_from': signs_from,
                            'non_linearity': non_linearity,
                            'circular_non_linear': circular_non_linear,
 
@@ -380,6 +383,7 @@ if __name__ == '__main__':
                                            bias_scaling=bias_scaling,
 
                                            distribution=distribution,
+                                           signs_from=signs_from,
                                            non_linearity=non_linearity,
                                            circular_non_linear_kernel=circular_non_linear,
 
