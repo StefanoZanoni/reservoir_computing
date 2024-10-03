@@ -18,8 +18,8 @@ def validate_params(just_memory, input_units, memory_units, non_linear_units, sp
         raise ValueError("Memory units must be greater than 0.")
     if not (1 <= input_memory_connectivity <= memory_units):
         raise ValueError("Input to memory connectivity must be in [1, memory_units].")
-    if distribution not in ['uniform', 'normal', 'fixed']:
-        raise ValueError("Distribution must be 'uniform', 'normal', or 'fixed'.")
+    if distribution not in ['uniform', 'normal']:
+        raise ValueError("Distribution must be 'uniform', or 'normal'.")
     if non_linearity not in ['tanh', 'identity']:
         raise ValueError("Non-linearity must be 'tanh' or 'identity'.")
 
@@ -58,7 +58,8 @@ class RMNCell(torch.nn.Module):
                  bias: bool = True,
                  bias_scaling: float = None,
                  distribution: str = 'uniform',
-                 signs_from: str = 'pi',
+                 signs_from: str | None = None,
+                 fixed_input_kernel: bool = False,
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
                  circular_non_linear_kernel: bool = False,
@@ -82,8 +83,11 @@ class RMNCell(torch.nn.Module):
         self.input_memory_scaling = input_memory_scaling
 
         # Input to memory reservoir kernel
-        self.input_memory_kernel = init_input_kernel(input_units, memory_units, input_memory_connectivity,
-                                                     input_memory_scaling, 'fixed', signs_from=signs_from)
+        self.input_memory_kernel = init_input_kernel(
+            input_units, memory_units, input_memory_connectivity,
+            input_memory_scaling, 'fixed' if fixed_input_kernel else distribution,
+            signs_from=signs_from
+        )
         # Memory reservoir kernel
         self.memory_kernel = init_memory_kernel(memory_units, theta, legendre, memory_scaling)
         self._memory_state = None
@@ -97,9 +101,12 @@ class RMNCell(torch.nn.Module):
             self.leaky_rate = leaky_rate
             self.one_minus_leaky_rate = 1 - leaky_rate
             # Input to non-linear reservoir kernel
-            self.input_non_linear_kernel = init_input_kernel(input_units, non_linear_units,
-                                                             input_non_linear_connectivity, input_non_linear_scaling,
-                                                             distribution)
+            self.input_non_linear_kernel = init_input_kernel(
+                input_units, non_linear_units, input_non_linear_connectivity,
+                input_non_linear_scaling, 'fixed' if circular_non_linear_kernel and fixed_input_kernel
+                else distribution,
+                signs_from=signs_from if circular_non_linear_kernel and fixed_input_kernel else None
+            )
             # Non-linear reservoir kernel
             self.non_linear_kernel = init_non_linear_kernel(non_linear_units, non_linear_connectivity, distribution,
                                                             spectral_radius, leaky_rate, effective_rescaling,
@@ -200,7 +207,8 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                  bias: bool = True,
                  bias_scaling: float = None,
                  distribution: str = 'uniform',
-                 signs_from: str = 'pi',
+                 signs_from: str | None = None,
+                 fixed_input_kernels: bool = False,
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
                  circular_non_linear_kernel: bool = False,
@@ -228,7 +236,8 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                            non_linear_connectivity=non_linear_connectivity,
                            memory_non_linear_connectivity=memory_non_linear_connectivity, bias=bias,
                            bias_scaling=bias_scaling, distribution=distribution, signs_from=signs_from,
-                           non_linearity=non_linearity, effective_rescaling=effective_rescaling,
+                           fixed_input_kernel=fixed_input_kernels, non_linearity=non_linearity,
+                           effective_rescaling=effective_rescaling,
                            circular_non_linear_kernel=circular_non_linear_kernel, euler=euler, epsilon=epsilon,
                            gamma=gamma, legendre=legendre, theta=theta, just_memory=just_memory)
         if task == 'classification':

@@ -19,7 +19,7 @@ def eye_init(M: int) -> torch.FloatTensor:
 
 
 def sparse_tensor_init(M: int, N: int, C: int = 1, distribution: str = 'uniform', scaling: float = 1.0,
-                       signs_from: str | None = 'pi') -> torch.FloatTensor:
+                       signs_from: str | None = None) -> torch.FloatTensor:
     """
     Generates an M x N matrix to be used as sparse kernel.
     For each row only C elements are non-zero (i.e., each input dimension is projected only to C neurons).
@@ -46,6 +46,8 @@ def sparse_tensor_init(M: int, N: int, C: int = 1, distribution: str = 'uniform'
         raise ValueError(f"Invalid number of non-zero elements <<{C}>>. Must be positive.")
     if distribution not in ['uniform', 'normal', 'fixed']:
         raise ValueError(f"Invalid distribution <<{distribution}>>. Only uniform, normal and fixed allowed.")
+    if signs_from not in [None, 'random', 'pi', 'e', 'logistic']:
+        raise ValueError(f"Invalid signs_from <<{signs_from}>>. Only random, pi, e and logistic allowed.")
 
     if distribution == 'fixed':
         values = torch.ones(M * C, dtype=torch.float32) * scaling
@@ -68,10 +70,10 @@ def sparse_tensor_init(M: int, N: int, C: int = 1, distribution: str = 'uniform'
         elif signs_from == 'logistic':
             # Logistic map initialization
             x = 0.33
-            signs = []
-            for _ in range(M * C):
+            signs = [0] * M * C
+            for i in range(M * C):
                 x = 4 * x * (1 - x)
-                signs.append(1 if x > 0.5 else -1)
+                signs[i] = 1 if x > 0.5 else -1
             signs = np.array(signs)
 
         values *= torch.tensor(signs, dtype=torch.float32)

@@ -22,8 +22,8 @@ def validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, r
         raise ValueError("Leaky rate must be in (0, 1].")
     if not (1 <= recurrent_connectivity <= recurrent_units):
         raise ValueError("Recurrent connectivity must be in [1, recurrent_units].")
-    if distribution not in ['uniform', 'normal', 'fixed']:
-        raise ValueError("Distribution must be 'uniform', 'normal', or 'fixed'.")
+    if distribution not in ['uniform', 'normal']:
+        raise ValueError("Distribution must be 'uniform', or 'normal'.")
     if non_linearity not in ['tanh', 'identity']:
         raise ValueError("Non-linearity must be 'tanh' or 'identity'.")
 
@@ -42,6 +42,8 @@ class ReservoirCell(torch.nn.Module):
                  bias: bool = True,
                  bias_scaling: float = None,
                  distribution: str = 'uniform',
+                 signs_from: str | None = None,
+                 fixed_input_kernel: bool = False,
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
                  circular_recurrent_kernel: bool = False,
@@ -49,7 +51,6 @@ class ReservoirCell(torch.nn.Module):
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
                  ) -> None:
-
         super().__init__()
 
         validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity,
@@ -65,7 +66,10 @@ class ReservoirCell(torch.nn.Module):
         self.recurrent_connectivity = recurrent_connectivity
 
         self.input_kernel = init_input_kernel(input_units, recurrent_units, input_connectivity, input_scaling,
-                                              distribution)
+                                              'fixed' if circular_recurrent_kernel and fixed_input_kernel
+                                              else distribution,
+                                              signs_from=signs_from if circular_recurrent_kernel and fixed_input_kernel
+                                              else None)
         self.recurrent_kernel = init_non_linear_kernel(recurrent_units, recurrent_connectivity, distribution,
                                                        spectral_radius, leaky_rate, effective_rescaling,
                                                        circular_recurrent_kernel, euler, gamma, recurrent_scaling)
@@ -123,6 +127,8 @@ class EchoStateNetwork(torch.nn.Module):
                  bias: bool = True,
                  bias_scaling: float = None,
                  distribution: str = 'uniform',
+                 signs_from: str | None = None,
+                 fixed_input_kernel: bool = False,
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
                  circular_recurrent_kernel: bool = False,
@@ -147,6 +153,8 @@ class EchoStateNetwork(torch.nn.Module):
                                  recurrent_connectivity=recurrent_connectivity,
                                  bias=bias,
                                  distribution=distribution,
+                                 signs_from=signs_from,
+                                 fixed_input_kernel=fixed_input_kernel,
                                  non_linearity=non_linearity,
                                  effective_rescaling=effective_rescaling,
                                  bias_scaling=bias_scaling,

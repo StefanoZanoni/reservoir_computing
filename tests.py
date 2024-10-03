@@ -83,7 +83,8 @@ if __name__ == '__main__':
     parser.add_argument('--leaky_rate', type=float, default=0.5, help='Leaky rate')
     parser.add_argument('--bias', action='store_true', help='Whether to use bias or not')
     parser.add_argument('--distribution', type=str, default='uniform', help='Weights distribution to use')
-    parser.add_argument('--signs_from', type=str, default='pi', help='Signs source to use')
+    parser.add_argument('--signs_from', type=str, default=None, help='Signs source to use')
+    parser.add_argument('--fixed_input_kernels', action='store_true', help='Whether to use fixed input kernels or not')
     parser.add_argument('--non_linearity', type=str, default='tanh', help='Non-linearity to use')
     parser.add_argument('--effective_rescaling', action='store_true', help='Whether to use effective rescaling or not')
     parser.add_argument('--euler', action='store_true', help='Whether to use Euler non linear or not')
@@ -131,7 +132,6 @@ if __name__ == '__main__':
             device = torch.device('mps')
         else:
             device = torch.device('cpu')
-            torch.set_num_threads(os.cpu_count())
 
     # set arguments
     dataset_name = args.dataset
@@ -174,6 +174,7 @@ if __name__ == '__main__':
 
     distribution = args.distribution
     signs_from = args.signs_from
+    fixed_input_kernel = args.fixed_input_kernels
     non_linearity = args.non_linearity
     circular_non_linear = args.circular_non_linear
 
@@ -247,6 +248,8 @@ if __name__ == '__main__':
                            'bias_scaling': bias_scaling,
 
                            'distribution': distribution,
+                           'signs_from': signs_from,
+                           'fixed_input_kernel': fixed_input_kernel,
                            'non_linearity': non_linearity,
                            'circular_non_linear': circular_non_linear,
 
@@ -283,6 +286,8 @@ if __name__ == '__main__':
                                      bias_scaling=bias_scaling,
 
                                      distribution=distribution,
+                                     signs_from=signs_from,
+                                     fixed_input_kernel=fixed_input_kernel,
                                      non_linearity=non_linearity,
                                      circular_recurrent_kernel=circular_non_linear,
 
@@ -333,6 +338,7 @@ if __name__ == '__main__':
 
                            'distribution': distribution,
                            'signs_from': signs_from,
+                           'fixed_input_kernel': fixed_input_kernel,
                            'non_linearity': non_linearity,
                            'circular_non_linear': circular_non_linear,
 
@@ -351,55 +357,28 @@ if __name__ == '__main__':
                            'just_memory': just_memory
                            }
 
-        model = DeepReservoirMemoryNetwork(task,
-                                           input_units,
-                                           non_linear_units,
-                                           memory_units,
-
-                                           number_of_layers=number_of_layers,
-                                           concatenate_non_linear=concatenate_non_linear,
-                                           concatenate_memory=concatenate_memory,
-
-                                           memory_scaling=memory_scaling,
-                                           non_linear_scaling=non_linear_scaling,
+        model = DeepReservoirMemoryNetwork(task, input_units, non_linear_units, memory_units,
+                                           number_of_layers=number_of_layers, initial_transients=initial_transients,
+                                           memory_scaling=memory_scaling, non_linear_scaling=non_linear_scaling,
                                            input_memory_scaling=input_memory_scaling,
                                            input_non_linear_scaling=input_non_linear_scaling,
                                            memory_non_linear_scaling=memory_non_linear_scaling,
-                                           inter_memory_scaling=inter_memory_scaling,
                                            inter_non_linear_scaling=inter_non_linear_scaling,
-
-                                           spectral_radius=spectral_radius,
-                                           leaky_rate=leaky_rate,
-                                           effective_rescaling=effective_rescaling,
-
-                                           input_memory_connectivity=input_memory_connectivity,
+                                           inter_memory_scaling=inter_memory_scaling, spectral_radius=spectral_radius,
+                                           leaky_rate=leaky_rate, input_memory_connectivity=input_memory_connectivity,
                                            input_non_linear_connectivity=input_non_linear_connectivity,
                                            non_linear_connectivity=non_linear_connectivity,
                                            memory_non_linear_connectivity=memory_non_linear_connectivity,
                                            inter_non_linear_connectivity=inter_non_linear_connectivity,
-                                           inter_memory_connectivity=inter_memory_connectivity,
-
-                                           bias=bias,
-                                           bias_scaling=bias_scaling,
-
-                                           distribution=distribution,
-                                           signs_from=signs_from,
-                                           non_linearity=non_linearity,
-                                           circular_non_linear_kernel=circular_non_linear,
-
-                                           alpha=alpha,
-                                           max_iter=max_iter,
-                                           tolerance=tolerance,
-                                           initial_transients=initial_transients,
-
-                                           euler=euler,
-                                           epsilon=epsilon,
-                                           gamma=gamma,
-
-                                           legendre=legendre_memory,
-                                           theta=theta,
-                                           just_memory=just_memory
-                                           ).to(device)
+                                           inter_memory_connectivity=inter_memory_connectivity, bias=bias,
+                                           bias_scaling=bias_scaling, distribution=distribution, signs_from=signs_from,
+                                           fixed_input_kernel=fixed_input_kernel,
+                                           non_linearity=non_linearity, effective_rescaling=effective_rescaling,
+                                           concatenate_non_linear=concatenate_non_linear,
+                                           concatenate_memory=concatenate_memory,
+                                           circular_non_linear_kernel=circular_non_linear, euler=euler, epsilon=epsilon,
+                                           gamma=gamma, alpha=alpha, max_iter=max_iter, tolerance=tolerance,
+                                           legendre=legendre_memory, theta=theta, just_memory=just_memory).to(device)
 
     # choose a task
     if dataset_name == 'sequential_mnist':
