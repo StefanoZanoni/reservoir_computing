@@ -350,5 +350,5 @@ def test_esn():
 
 
 if __name__ == '__main__':
-    #test_esn()
+    test_esn()
     test_rmn()
