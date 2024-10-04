@@ -2,6 +2,7 @@ import os
 import json
 import random
 import csv
+import time
 
 import torch
 import numpy as np
@@ -113,7 +114,10 @@ if __name__ == '__main__':
     parser.add_argument('--tolerance', type=float, default=1e-4, help='Tolerance for Ridge Regression')
 
     # deep reservoirs
-    parser.add_argument('--num_layers', type=int, default=1, help='Number of layers for deep reservoirs')
+    parser.add_argument('--number_of_non_linear_layers', type=int, default=1,
+                        help='Number of non linear layers for deep reservoirs')
+    parser.add_argument('--number_of_memory_layers', type=int, default=1,
+                        help='Number of memory layers for deep reservoirs')
     parser.add_argument('--concatenate_non_linear', action='store_true',
                         help='Whether to concatenate the non linear or not')
     parser.add_argument('--concatenate_memory', action='store_true',
@@ -142,7 +146,8 @@ if __name__ == '__main__':
     validation_batch_size = args.batch_validation
     testing_batch_size = args.batch_testing
 
-    number_of_layers = args.num_layers
+    number_of_non_linear_layers = args.number_of_non_linear_layers
+    number_of_memory_layers = args.number_of_memory_layers
     concatenate_non_linear = args.concatenate_non_linear
     concatenate_memory = args.concatenate_memory
 
@@ -226,7 +231,7 @@ if __name__ == '__main__':
                            'validation_batch_size': validation_batch_size,
                            'testing_batch_size': testing_batch_size,
 
-                           'number_of_layers': number_of_layers,
+                           'number_of_layers': number_of_non_linear_layers,
                            'concatenate_non_linear': concatenate_non_linear,
 
                            'input_units': input_units,
@@ -267,7 +272,7 @@ if __name__ == '__main__':
                                      input_units,
                                      non_linear_units,
 
-                                     number_of_layers=number_of_layers,
+                                     number_of_layers=number_of_non_linear_layers,
                                      concatenate=concatenate_non_linear,
 
                                      input_scaling=input_non_linear_scaling,
@@ -306,7 +311,8 @@ if __name__ == '__main__':
                            'validation_batch_size': validation_batch_size,
                            'testing_batch_size': testing_batch_size,
 
-                           'number_of_layers': number_of_layers,
+                           'number_of_non_linear_layers': number_of_non_linear_layers,
+                           'number_of_memory_layers': number_of_memory_layers,
                            'concatenate_non_linear': concatenate_non_linear,
                            'concatenate_memory': concatenate_memory,
 
@@ -358,7 +364,9 @@ if __name__ == '__main__':
                            }
 
         model = DeepReservoirMemoryNetwork(task, input_units, non_linear_units, memory_units,
-                                           number_of_layers=number_of_layers, initial_transients=initial_transients,
+                                           number_of_non_linear_layers=number_of_non_linear_layers,
+                                           number_of_memory_layers=number_of_memory_layers,
+                                           initial_transients=initial_transients,
                                            memory_scaling=memory_scaling, non_linear_scaling=non_linear_scaling,
                                            input_memory_scaling=input_memory_scaling,
                                            input_non_linear_scaling=input_non_linear_scaling,
@@ -380,6 +388,7 @@ if __name__ == '__main__':
                                            gamma=gamma, alpha=alpha, max_iter=max_iter, tolerance=tolerance,
                                            legendre=legendre_memory, theta=theta, just_memory=just_memory).to(device)
 
+    model = torch.compile(model)
     # choose a task
     if dataset_name == 'sequential_mnist':
         data = SequentialMNIST(training=True)
@@ -400,7 +409,6 @@ if __name__ == '__main__':
                                                             batch_size=validation_batch_size,
                                                             shuffle=True,
                                                             drop_last=True)
-        model.reset_state()
         accuracy = model.score(validation_dataloader, device, standardize=True, use_last_state=use_last_state) * 100
 
         try:
@@ -424,22 +432,11 @@ if __name__ == '__main__':
                                                       drop_last=True)
     elif dataset_name == 'memory_capacity':
         if model_name == 'esn':
-            if concatenate_non_linear:
-                max_delay = non_linear_units * 2
-            else:
-                max_delay = non_linear_units * number_of_layers * 2
+            max_delay = non_linear_units * 2
         elif model_name == 'rmn' and not just_memory:
-            if concatenate_non_linear and not concatenate_memory:
-                max_delay = (memory_units * number_of_layers + non_linear_units) * 2
-            elif concatenate_memory and not concatenate_non_linear:
-                max_delay = (memory_units + non_linear_units * number_of_layers) * 2
-            else:
-                max_delay = (memory_units + non_linear_units) * number_of_layers * 2
+            max_delay = (non_linear_units + memory_units) * 2
         else:
-            if concatenate_memory:
-                max_delay = memory_units * 2
-            else:
-                max_delay = memory_units * number_of_layers * 2
+            max_delay = memory_units * 2
 
         mcs_validation = []
         mcs_test = []
@@ -448,7 +445,7 @@ if __name__ == '__main__':
         for run in range(3):
             mc_ks_validation = []
             mc_ks_test = []
-            for k in tqdm(range(max_delay), 'Delay', disable=True):
+            for k in tqdm(range(max_delay), 'Delay', disable=False):
                 k += 1  # k starts from 1
                 training_data = MemoryCapacity(k, training=True)
                 training_data.target = training_data.target[initial_transients:]
@@ -474,7 +471,6 @@ if __name__ == '__main__':
                           disable_progress_bar=True)
 
                 # validation
-                model.reset_state()
                 predictions = (
                     model.predict(validation_dataloader, device, standardize=True,
                                   use_last_state=use_last_state, disable_progress_bar=True)).reshape(-1)
@@ -482,7 +478,6 @@ if __name__ == '__main__':
                 mc_ks_validation.append(mc_k)
 
                 # test
-                model.reset_state()
                 predictions = (
                     model.predict(test_dataloader, device, standardize=True, use_last_state=use_last_state,
                                   disable_progress_bar=True)).reshape(-1)
@@ -495,7 +490,7 @@ if __name__ == '__main__':
             validation_determination_coefficients.append(mc_ks_validation)
             test_determination_coefficients.append(mc_ks_test)
 
-        results_path = generate_results_path(model_name, dataset_name, number_of_layers, non_linear_units,
+        results_path = generate_results_path(model_name, dataset_name, number_of_non_linear_layers, non_linear_units,
                                              memory_units, euler, legendre_memory, chebyshev_memory, just_memory)
 
         if not os.path.exists(results_path):

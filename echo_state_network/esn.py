@@ -1,17 +1,30 @@
-from typing import Callable
-
 import torch
 import numpy as np
-
 from sklearn.linear_model import RidgeClassifier, Ridge
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
-
+from typing import Callable
 from utils.initialization import init_input_kernel, init_non_linear_kernel, init_bias
 
 
 def validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity,
                     distribution, non_linearity):
+    """
+    Validates the parameters for the ReservoirCell.
+
+    Args:
+        input_units (int): Number of input units.
+        recurrent_units (int): Number of recurrent units.
+        spectral_radius (float): Spectral radius of the recurrent weight matrix.
+        leaky_rate (float): Leaky integration rate.
+        recurrent_connectivity (int): Number of connections in the recurrent weight matrix.
+        distribution (str): Distribution type for weight initialization.
+        non_linearity (str): Non-linearity function to use.
+    
+    Raises:
+        ValueError: If any of the parameters are invalid.
+    """
+
     if input_units < 1:
         raise ValueError("Input units must be greater than 0.")
     if recurrent_units < 1:
@@ -29,6 +42,15 @@ def validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, r
 
 
 class ReservoirCell(torch.nn.Module):
+    """
+    A single reservoir cell for the Echo State Network.
+
+    Attributes:
+        input_kernel (torch.Tensor): Input weight matrix.
+        recurrent_kernel (torch.Tensor): Recurrent weight matrix.
+        bias (torch.Tensor): Bias term.
+    """
+
     def __init__(self,
                  input_units: int,
                  recurrent_units: int,
@@ -51,19 +73,38 @@ class ReservoirCell(torch.nn.Module):
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
                  ) -> None:
+        """
+        Initializes the ReservoirCell.
+
+        Args:
+            input_units (int): Number of input units.
+            recurrent_units (int): Number of recurrent units.
+            input_scaling (float): Scaling factor for input weights.
+            recurrent_scaling (float): Scaling factor for recurrent weights.
+            spectral_radius (float): Spectral radius of the recurrent weight matrix.
+            leaky_rate (float): Leaky integration rate.
+            input_connectivity (int): Number of connections in the input weight matrix.
+            recurrent_connectivity (int): Number of connections in the recurrent weight matrix.
+            bias (bool): Whether to use a bias term.
+            bias_scaling (float, optional): Scaling factor for the bias term.
+            distribution (str): Distribution type for weight initialization.
+            signs_from (str, optional): Source for signs of weights.
+            fixed_input_kernel (bool): Whether to use a fixed input kernel.
+            non_linearity (str): Non-linearity function to use.
+            effective_rescaling (bool): Whether to use effective rescaling.
+            circular_recurrent_kernel (bool): Whether to use a circular recurrent kernel.
+            euler (bool): Whether to use Euler integration.
+            epsilon (float): Euler integration step size.
+            gamma (float): Scaling factor for recurrent weights.
+        """
+
         super().__init__()
 
         validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity,
                         distribution, non_linearity)
 
-        self.input_units = input_units
-        self.recurrent_units = recurrent_units
-        self.input_scaling = input_scaling
-        self.spectral_radius = spectral_radius
-        self.leaky_rate = leaky_rate
-        self.one_minus_leaky_rate = 1 - leaky_rate
-        self.input_connectivity = input_connectivity
-        self.recurrent_connectivity = recurrent_connectivity
+        self._leaky_rate = leaky_rate
+        self._one_minus_leaky_rate = 1 - leaky_rate
 
         self.input_kernel = init_input_kernel(input_units, recurrent_units, input_connectivity, input_scaling,
                                               'fixed' if circular_recurrent_kernel and fixed_input_kernel
@@ -74,46 +115,89 @@ class ReservoirCell(torch.nn.Module):
                                                        spectral_radius, leaky_rate, effective_rescaling,
                                                        circular_recurrent_kernel, euler, gamma, recurrent_scaling)
         self.bias = init_bias(bias, recurrent_units, input_scaling, bias_scaling)
-        self.epsilon = epsilon
-        self.non_linearity = non_linearity
+        self._epsilon = epsilon
         self._non_linear_function: Callable = torch.tanh if non_linearity == 'tanh' else lambda x: x
         self._state = None
         self._forward_function: Callable = self._forward_euler if euler else self._forward_leaky_integrator
 
     @torch.no_grad()
     def _forward_leaky_integrator(self, xt: torch.Tensor) -> torch.FloatTensor:
-        self._state.mul_(self.one_minus_leaky_rate).add_(
+        """
+        Forward pass using the leaky integrator method.
+
+        Args:
+            xt (torch.Tensor): Input tensor at time t.
+
+        Returns:
+            torch.FloatTensor: Updated state tensor.
+        """
+
+        self._state.mul_(self._one_minus_leaky_rate).add_(
             self._non_linear_function(
-                torch.matmul(xt, self.input_kernel).add_(  # input part
-                    torch.matmul(self._state, self.recurrent_kernel)  # state part
-                ).add_(self.bias)
-            ).mul_(self.leaky_rate)
+                torch.matmul(xt, self.input_kernel)
+                .addmm_(self._state, self.recurrent_kernel)
+                .add_(self.bias)
+            )
+            .mul_(self._leaky_rate)
         )
+
         return self._state
 
     @torch.no_grad()
     def _forward_euler(self, xt: torch.Tensor) -> torch.FloatTensor:
+        """
+        Forward pass using the Euler integration method.
+
+        Args:
+            xt (torch.Tensor): Input tensor at time t.
+
+        Returns:
+            torch.FloatTensor: Updated state tensor.
+        """
+
         self._state.add_(
             self._non_linear_function(
-                torch.matmul(xt, self.input_kernel).add_(
-                    torch.matmul(self._state, self.recurrent_kernel)
-                ).add_(self.bias)
-            ).mul_(self.epsilon)
+                torch.matmul(xt, self.input_kernel)
+                .addmm_(self._state, self.recurrent_kernel)
+                .add_(self.bias)
+            )
+            .mul_(self._epsilon)
         )
+
         return self._state
 
     @torch.no_grad()
     def forward(self, xt: torch.Tensor) -> torch.FloatTensor:
-        if self._state is None:
-            self._state = torch.zeros((xt.shape[0], self.recurrent_units), dtype=torch.float32, requires_grad=False,
-                                      device=xt.device)
+        """
+        Forward pass through the reservoir cell.
+
+        Args:
+            xt (torch.Tensor): Input tensor at time t.
+
+        Returns:
+            torch.FloatTensor: Updated state tensor.
+        """
 
         return self._forward_function(xt)
 
+    def reset_state(self, batch_size: int, device: torch.device) -> None:
+        self._state = torch.zeros((batch_size, self.recurrent_kernel.shape[0]), dtype=torch.float32,
+                                  requires_grad=False, device=device)
+
 
 class EchoStateNetwork(torch.nn.Module):
+    """
+    An Echo State Network (ESN) for time series prediction/classification tasks.
+
+    Attributes:
+        scaler (StandardScaler): Scaler for standardizing the states.
+        _initial_transients (int): Number of initial transient states to discard.
+        task (str): Task type ('classification' or 'regression').
+        net (ReservoirCell): Reservoir cell of the ESN.
+        readout (RidgeClassifier or Ridge): Readout layer for the ESN.
+    """
+
     def __init__(self,
-                 task: str,
                  input_units: int,
                  recurrent_units: int,
                  *,
@@ -135,15 +219,39 @@ class EchoStateNetwork(torch.nn.Module):
                  euler: bool = False,
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
-                 alpha: float = 1.0,
-                 max_iter: int = 1000,
-                 tolerance: float = 1e-4,
                  ) -> None:
+        """
+        Initializes the EchoStateNetwork.
+
+        Args:
+            task (str): Task type ('classification' or 'regression').
+            input_units (int): Number of input units.
+            recurrent_units (int): Number of recurrent units.
+            initial_transients (int): Number of initial transient states to discard.
+            input_scaling (float): Scaling factor for input weights.
+            recurrent_scaling (float): Scaling factor for recurrent weights.
+            spectral_radius (float): Spectral radius of the recurrent weight matrix.
+            leaky_rate (float): Leaky integration rate.
+            input_connectivity (int): Number of connections in the input weight matrix.
+            recurrent_connectivity (int): Number of connections in the recurrent weight matrix.
+            bias (bool): Whether to use a bias term.
+            bias_scaling (float, optional): Scaling factor for the bias term.
+            distribution (str): Distribution type for weight initialization.
+            signs_from (str, optional): Source for signs of weights.
+            fixed_input_kernel (bool): Whether to use a fixed input kernel.
+            non_linearity (str): Non-linearity function to use.
+            effective_rescaling (bool): Whether to use effective rescaling.
+            circular_recurrent_kernel (bool): Whether to use a circular recurrent kernel.
+            euler (bool): Whether to use Euler integration.
+            epsilon (float): Euler integration step size.
+            gamma (float): Scaling factor for recurrent weights.
+            alpha (float): Regularization strength for the readout layer.
+            max_iter (int): Maximum number of iterations for the readout layer.
+            tolerance (float): Tolerance for the readout layer.
+        """
 
         super().__init__()
-        self.scaler = None
-        self.initial_transients = initial_transients
-        self.task = task
+        self._initial_transients = initial_transients
         self.net = ReservoirCell(input_units,
                                  recurrent_units,
                                  input_scaling=input_scaling,
@@ -163,111 +271,30 @@ class EchoStateNetwork(torch.nn.Module):
                                  epsilon=epsilon,
                                  gamma=gamma,
                                  recurrent_scaling=recurrent_scaling)
-        if task == 'classification':
-            self.readout = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
-        elif task == 'regression':
-            self.readout = Ridge(alpha=alpha, max_iter=max_iter, tol=tolerance)
 
     @torch.no_grad()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through the Echo State Network.
 
-        states = torch.empty((x.shape[0], x.shape[1], self.net.recurrent_units), dtype=torch.float32,
+        Args:
+            x (torch.Tensor): Input tensor.
+
+        Returns:
+            torch.Tensor: States tensor after passing through the network.
+        """
+
+        seq_len = x.shape[1]
+        states = torch.empty((x.shape[0], seq_len, self.net.recurrent_kernel.shape[0]), dtype=torch.float32,
                              requires_grad=False, device=x.device)
 
         is_dim_2 = x.dim() == 2
 
-        for t in range(x.shape[1]):
+        for t in range(seq_len):
             xt = x[:, t].unsqueeze(1) if is_dim_2 else x[:, t]
             state = self.net(xt)
             states[:, t, :].copy_(state)
 
-        states = states[:, self.initial_transients:, :]
+        states = states[:, self._initial_transients:, :]
 
         return states
-
-    @torch.no_grad()
-    def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-            use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
-
-        states, ys = [], []
-        for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
-            x, y = x.to(device), y.to(device)
-            state = self(x)
-            if use_last_state:
-                state = state[:, -1, :]
-            states.append(state.cpu().numpy())
-            ys.append(y.cpu().numpy())
-        states = np.concatenate(states, axis=0)
-        ys = np.concatenate(ys, axis=0)
-
-        if not use_last_state:
-            states = states.reshape(-1, states.shape[2])
-            if len(ys.shape) == 1:
-                ys = np.repeat(ys, states.shape[0] // ys.shape[0], axis=0)
-            else:
-                ys = ys.T
-
-        if standardize:
-            self.scaler = StandardScaler().fit(states)
-            states = self.scaler.transform(states)
-
-        self.readout.fit(states, ys)
-
-    @torch.no_grad()
-    def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-              use_last_state: bool = True, disable_progress_bar: bool = False) -> float:
-
-        if standardize:
-            if self.scaler is None:
-                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
-
-        states, ys = [], []
-        for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
-            x, y = x.to(device), y.to(device)
-            state = self(x)
-            if use_last_state:
-                state = state[:, -1, :]
-            states.append(state.cpu().numpy())
-            ys.append(y.cpu().numpy())
-        states = np.concatenate(states, axis=0)
-        ys = np.concatenate(ys, axis=0)
-
-        if not use_last_state:
-            states = states.reshape(-1, states.shape[2])
-            if len(ys.shape) == 1:
-                ys = np.repeat(ys, states.shape[0] // ys.shape[0], axis=0)
-            else:
-                ys = ys.T
-
-        if standardize:
-            states = self.scaler.transform(states)
-
-        return self.readout.score(states, ys)
-
-    @torch.no_grad()
-    def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-                use_last_state: bool = True, disable_progress_bar: bool = False) -> np.ndarray:
-
-        if standardize:
-            if self.scaler is None:
-                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
-
-        states = []
-        for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
-            x = x.to(device)
-            state = self(x)
-            if use_last_state:
-                state = state[:, -1, :]
-            states.append(state.cpu().numpy())
-        states = np.concatenate(states, axis=0)
-
-        if not use_last_state:
-            states = states.reshape(-1, states.shape[2])
-
-        if standardize:
-            states = self.scaler.transform(states)
-
-        return self.readout.predict(states)
-
-    def reset_state(self) -> None:
-        self.net._state = None
