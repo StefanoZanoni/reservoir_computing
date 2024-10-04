@@ -445,7 +445,7 @@ if __name__ == '__main__':
         for run in range(3):
             mc_ks_validation = []
             mc_ks_test = []
-            for k in tqdm(range(max_delay), 'Delay', disable=False):
+            for k in tqdm(range(max_delay), 'Delay', disable=True):
                 k += 1  # k starts from 1
                 training_data = MemoryCapacity(k, training=True)
                 training_data.target = training_data.target[initial_transients:]
