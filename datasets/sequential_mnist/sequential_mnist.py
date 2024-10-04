@@ -5,9 +5,25 @@ import numpy as np
 
 
 class SequentialMNIST(Dataset):
+    """
+    A PyTorch Dataset class for the Sequential MNIST dataset.
 
-    def __init__(self, training: bool = True, normalize: bool = False, permute: bool = False,
-                 seed: int = None):
+    Attributes:
+        data (torch.Tensor): The input data for the model.
+        targets (torch.Tensor): The target labels for the model.
+    """
+
+    def __init__(self, training: bool = True, normalize: bool = False, permute: bool = False, seed: int = None):
+        """
+        Initializes the SequentialMNIST dataset.
+
+        Args:
+            training (bool): Flag indicating whether the dataset is for training or validation/testing.
+            normalize (bool): Flag indicating whether to normalize the data.
+            permute (bool): Flag indicating whether to permute the data.
+            seed (int, optional): Seed for the random permutation.
+        """
+
         transform_list = [transforms.ToTensor(), transforms.Lambda(lambda x: x / 255.0)]
         if normalize:
             transform_list.append(transforms.Normalize((0.1307,), (0.3081,)))
@@ -27,8 +43,27 @@ class SequentialMNIST(Dataset):
             permutation = np.random.permutation(28 * 28)
             self.data = self.data[:, permutation]
 
+        np.random.seed(None)
+
     def __len__(self):
+        """
+        Returns the length of the dataset.
+
+        Returns:
+            int: The length of the dataset.
+        """
+
         return len(self.data)
 
     def __getitem__(self, idx):
+        """
+        Retrieves the data and target at the specified index.
+
+        Args:
+            idx (int): The index of the data to retrieve.
+
+        Returns:
+            tuple: A tuple containing the data and target tensors.
+        """
+
         return self.data[idx], self.targets[idx]
