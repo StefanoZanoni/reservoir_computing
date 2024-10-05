@@ -208,7 +208,7 @@ def rescale_kernel(W: torch.FloatTensor, spectral_radius: float, leaky_rate: flo
                    distribution: str, non_linear_connectivity: int, non_linear_units: int) -> torch.FloatTensor:
     if effective_rescaling and leaky_rate != 1:
         I = eye_init(non_linear_units)
-        W = W * leaky_rate + (I * (1 - leaky_rate))
+        W = (I * (1 - leaky_rate)) + W * leaky_rate
         W = spectral_norm_scaling(W, spectral_radius)
         return (W + I * (leaky_rate - 1)) * (1 / leaky_rate)
     if distribution == 'normal' and non_linear_units != 1:
