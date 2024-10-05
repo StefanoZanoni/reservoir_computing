@@ -46,6 +46,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         self._scaler = None
         self._concatenate = concatenate
         self._initial_transients = initial_transients
+        self._total_units = total_units
 
         # In case in which all the reservoir layers are concatenated, each level
         # contains units/layers neurons. This is done to keep the number of
@@ -64,7 +65,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         reservoir_layers = [
             EchoStateNetwork(
                 input_units,
-                self._recurrent_units,
+                self._recurrent_units + total_units % number_of_layers,
                 initial_transients=initial_transients,
                 input_scaling=input_scaling,
                 spectral_radius=spectral_radius,
@@ -157,7 +158,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         self._reset_state(batch_size, device)
 
         num_batches = len(data)
-        state_size = self._recurrent_units
+        state_size = self._total_units
 
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
                            state_size), dtype=np.float32)
@@ -203,7 +204,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         self._reset_state(batch_size, device)
 
         num_batches = len(data)
-        state_size = self._recurrent_units
+        state_size = self._total_units
 
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
                            state_size), dtype=np.float32)
@@ -243,7 +244,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         self._reset_state(batch_size, device)
 
         num_batches = len(data)
-        state_size = self._recurrent_units
+        state_size = self._total_units
 
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
                            state_size), dtype=np.float32)

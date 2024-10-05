@@ -143,7 +143,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             self._memory_units = total_memory_units
 
         memory_layers = [
-            MemoryCell(input_units, self._memory_units,
+            MemoryCell(input_units, self._memory_units + total_memory_units % number_of_memory_layers,
                        memory_scaling=memory_scaling,
                        input_memory_scaling=input_memory_scaling,
                        input_memory_connectivity=input_memory_connectivity,
@@ -173,7 +173,9 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
 
         if not just_memory:
             non_linear_layers = [
-                NonLinearCell(input_units, self._non_linear_units, last_h_memory_size,
+                NonLinearCell(input_units,
+                              self._non_linear_units + total_non_linear_units % number_of_non_linear_layers,
+                              last_h_memory_size,
                               non_linear_scaling=non_linear_scaling,
                               input_non_linear_scaling=input_non_linear_scaling,
                               memory_non_linear_scaling=memory_non_linear_scaling,
