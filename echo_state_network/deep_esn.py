@@ -136,20 +136,17 @@ class DeepEchoStateNetwork(torch.nn.Module):
         if not self._trained:
             raise RuntimeError('Model has not been trained yet.')
 
-        layer_input = x.clone()
-        states = []
-        states_last = []
+        layer_input = x
+        states = [None] * len(self.reservoir)
 
-        for reservoir_layer in self.reservoir:
+        for idx, reservoir_layer in enumerate(self.reservoir):
             state = reservoir_layer(layer_input)
-            states.append(state)
-            states_last.append(state[:, -1, :])
+            states[idx] = state
             layer_input = state
 
         states = torch.cat(states, dim=2) if self._concatenate else states[-1]
-        states_last = states_last[-1]
 
-        return states, states_last
+        return states, states[:, -1, :]
 
     @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
@@ -162,7 +159,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
         state_size = self._total_units
 
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
-                           state_size), dtype=np.float32)
+                           state_size), dtype=np.float32) if not use_last_state \
+            else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
         ys = np.empty((num_batches * batch_size, data.dataset.target.shape[0]), dtype=np.float32)
 
         self._trained = True
@@ -208,7 +206,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
         state_size = self._total_units
 
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
-                           state_size), dtype=np.float32)
+                           state_size), dtype=np.float32) if not use_last_state \
+            else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
         ys = np.empty((num_batches * batch_size, data.dataset.target.shape[0]), dtype=np.float32)
 
         idx = 0
@@ -248,7 +247,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
         state_size = self._total_units
 
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
-                           state_size), dtype=np.float32)
+                           state_size), dtype=np.float32) if not use_last_state\
+            else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
 
         idx = 0
         for x, _ in tqdm(data, desc='Fitting', disable=disable_progress_bar):
