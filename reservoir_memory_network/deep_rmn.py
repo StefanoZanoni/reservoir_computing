@@ -267,7 +267,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             for t in range(seq_len):
                 xt = last_memory_state[:, t].unsqueeze(1) if is_dim2 else last_memory_state[:, t]
                 state = memory_layer(xt)
-                memory_states[idx][t] = state
+                memory_states[idx][t] = state.clone()
             memory_states[idx] = torch.stack(memory_states[idx], dim=1)
             last_memory_state = memory_states[idx]
 
@@ -280,7 +280,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                 for t in range(seq_len):
                     xt = last_non_linear_state[:, t].unsqueeze(1) if is_dim2 else last_non_linear_state[:, t]
                     state = non_linear_layer(xt, last_memory_state[:, t, :])
-                    non_linear_states[idx][t] = state
+                    non_linear_states[idx][t] = state.clone()
                 non_linear_states[idx] = torch.stack(non_linear_states[idx], dim=1)
                 last_non_linear_state = non_linear_states[idx]
 
