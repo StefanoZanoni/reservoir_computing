@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from scipy.spatial.distance import num_obs_y
 
 from tqdm import tqdm
 
@@ -117,6 +118,8 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             just_memory (bool): Whether to use only memory states.
         """
         super().__init__()
+        self._total_non_linear_units = total_non_linear_units
+        self._total_memory_units = total_memory_units
         self._initial_transients = initial_transients
         self._just_memory = just_memory
         self._scaler = None
@@ -128,17 +131,17 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         # _state variables projected to the next layer fixed;
         # i.e., the number of trainable parameters does not depend on concatenate_non_linear
         if concatenate_non_linear:
-            self._non_linear_units = max(1, int(total_non_linear_units / number_of_layers))
-            input_non_linear_connectivity = max(1, int(input_non_linear_connectivity / number_of_layers))
-            inter_non_linear_connectivity = max(1, int(inter_non_linear_connectivity / number_of_layers))
-            non_linear_connectivity = max(1, int(non_linear_connectivity / number_of_layers))
-            memory_non_linear_connectivity = max(1, int(memory_non_linear_connectivity / number_of_layers))
+            self._non_linear_units = max(1, int(total_non_linear_units / number_of_non_linear_layers))
+            input_non_linear_connectivity = max(1, int(input_non_linear_connectivity / number_of_non_linear_layers))
+            inter_non_linear_connectivity = max(1, int(inter_non_linear_connectivity / number_of_non_linear_layers))
+            non_linear_connectivity = max(1, int(non_linear_connectivity / number_of_non_linear_layers))
+            memory_non_linear_connectivity = max(1, int(memory_non_linear_connectivity / number_of_non_linear_layers))
         else:
             self._non_linear_units = total_non_linear_units
         if concatenate_memory:
-            self._memory_units = max(1, int(total_memory_units / number_of_layers))
-            input_memory_connectivity = max(1, int(input_memory_connectivity / number_of_layers))
-            inter_memory_connectivity = max(1, int(inter_memory_connectivity / number_of_layers))
+            self._memory_units = max(1, int(total_memory_units / number_of_memory_layers))
+            input_memory_connectivity = max(1, int(input_memory_connectivity / number_of_memory_layers))
+            inter_memory_connectivity = max(1, int(inter_memory_connectivity / number_of_memory_layers))
         else:
             self._memory_units = total_memory_units
 
@@ -154,7 +157,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                        theta=theta)
         ]
         if total_memory_units != self._memory_units:
-            last_h_memory_size = self._memory_units + total_memory_units % number_of_layers
+            last_h_memory_size = self._memory_units + total_memory_units % number_of_memory_layers
         else:
             last_h_memory_size = self._memory_units
         for _ in range(number_of_memory_layers - 1):
@@ -198,7 +201,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             ]
 
             if total_non_linear_units != self._non_linear_units:
-                last_h_non_linear_size = self._non_linear_units + total_non_linear_units % number_of_layers
+                last_h_non_linear_size = self._non_linear_units + total_non_linear_units % number_of_non_linear_layers
             else:
                 last_h_non_linear_size = self._non_linear_units
             for _ in range(number_of_non_linear_layers - 1):
@@ -275,7 +278,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                                    requires_grad=False, device=x.device)
 
         for idx, memory_layer in enumerate(self.memory_layers):
-            is_dim_2 = x.dim() == 2
+            is_dim_2 = last_memory_state.dim() == 2
             for t in range(last_memory_state.shape[1]):
                 xt = last_memory_state[:, t].unsqueeze(1) if is_dim_2 else last_memory_state[:, t]
                 state = memory_layer(xt)
@@ -289,21 +292,22 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             non_linear_state = torch.empty((x.shape[0], last_non_linear_state.shape[1], self._non_linear_units),
                                            dtype=torch.float32, requires_grad=False, device=x.device)
             for idx, non_linear_layer in enumerate(self.non_linear_layers):
-                is_dim_2 = x.dim() == 2
-                initial_transients = self._initial_transients if idx == 0 else 0
+                is_dim_2 = last_non_linear_state.dim() == 2
                 for t in range(last_non_linear_state.shape[1]):
                     xt = last_non_linear_state[:, t].unsqueeze(1) if is_dim_2 else last_non_linear_state[:, t]
                     state = non_linear_layer(xt, last_memory_state[:, t, :])
                     non_linear_state[:, t, :].copy_(state)
-                non_linear_states.append(non_linear_state[:, initial_transients:, :])
+                non_linear_states.append(non_linear_state)
                 non_linear_states_last.append(non_linear_state[:, -1, :])
-                last_non_linear_state = non_linear_state[:, initial_transients:, :]
+                last_non_linear_state = non_linear_state
 
         if not self._just_memory:
             if self._concatenate_non_linear:
                 non_linear_states = torch.cat(non_linear_states, dim=2)
+                non_linear_states_last = torch.cat(non_linear_states_last, dim=1)
             else:
                 non_linear_states = non_linear_states[-1]
+                non_linear_states_last = non_linear_states_last[-1]
         if self._concatenate_memory:
             memory_states = torch.cat(memory_states, dim=2)
             memory_states_last = torch.cat(memory_states_last, dim=1)
@@ -312,8 +316,8 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             memory_states_last = memory_states_last[-1]
 
         if not self._just_memory:
-            return (non_linear_states, non_linear_states_last, memory_states[:, self._initial_transients:, :],
-                    memory_states_last)
+            return (non_linear_states[:, self._initial_transients:, :], non_linear_states_last,
+                    memory_states[:, self._initial_transients:, :], memory_states_last)
         else:
             return None, None, memory_states[:, self._initial_transients:, :], memory_states_last
 
@@ -335,10 +339,11 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         self._reset_state(batch_size, device)
 
         num_batches = len(data)
-        state_size = self._non_linear_units
+        state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
 
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
-                           state_size), dtype=np.float32)
+                           state_size), dtype=np.float32) if not use_last_state\
+            else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
         ys = np.empty((num_batches * batch_size, data.dataset.target.shape[0]), dtype=np.float32)
 
         self._trained = True
@@ -392,10 +397,11 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         self._reset_state(batch_size, device)
 
         num_batches = len(data)
-        state_size = self._non_linear_units
+        state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
 
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
-                           state_size), dtype=np.float32)
+                           state_size), dtype=np.float32) if not use_last_state \
+            else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
         ys = np.empty((num_batches * batch_size, data.dataset.target.shape[0]), dtype=np.float32)
 
         idx = 0
@@ -443,10 +449,11 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         self._reset_state(batch_size, device)
 
         num_batches = len(data)
-        state_size = self._non_linear_units
+        state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
 
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
-                           state_size), dtype=np.float32)
+                           state_size), dtype=np.float32) if not use_last_state \
+            else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
 
         idx = 0
         for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
