@@ -251,75 +251,55 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                 non_linear_layer.reset_state(batch_size, device)
 
     @torch.no_grad()
-    def forward(self, x: torch.Tensor) -> tuple:
-        """
-        Forward pass through the deep reservoir memory network.
-
-        Args:
-            x (torch.Tensor): Input tensor.
-
-        Returns:
-            tuple: A tuple containing the non-linear states, last non-linear states, memory states,
-             and last memory states.
-        """
+    def forward(self, x: torch.Tensor)\
+            -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
 
         if not self._trained:
             raise ValueError('The model has not been trained yet. Use the fit method to train the model.')
 
-        if not self._just_memory:
-            non_linear_states = []
-            non_linear_states_last = []
-        memory_states = []
-        memory_states_last = []
+        seq_len = x.shape[1]
 
-        last_memory_state = x.clone()
+        memory_states = [[None] * seq_len] * len(self.memory_layers)
 
-        memory_state = torch.empty((x.shape[0], last_memory_state.shape[1], self._memory_units), dtype=torch.float32,
-                                   requires_grad=False, device=x.device)
-
+        last_memory_state = x
         for idx, memory_layer in enumerate(self.memory_layers):
-            is_dim_2 = last_memory_state.dim() == 2
-            for t in range(last_memory_state.shape[1]):
-                xt = last_memory_state[:, t].unsqueeze(1) if is_dim_2 else last_memory_state[:, t]
+            is_dim2 = last_memory_state.dim() == 2
+            for t in range(seq_len):
+                xt = last_memory_state[:, t].unsqueeze(1) if is_dim2 else last_memory_state[:, t]
                 state = memory_layer(xt)
-                memory_state[:, t, :].copy_(state)
-            memory_states.append(memory_state)
-            memory_states_last.append(memory_state[:, -1, :])
-            last_memory_state = memory_state
+                memory_states[idx][t] = state
+            memory_states[idx] = torch.stack(memory_states[idx], dim=1)
+            last_memory_state = memory_states[idx]
 
         if not self._just_memory:
-            last_non_linear_state = x.clone()
-            non_linear_state = torch.empty((x.shape[0], last_non_linear_state.shape[1], self._non_linear_units),
-                                           dtype=torch.float32, requires_grad=False, device=x.device)
+            non_linear_states = [[None] * seq_len] * len(self.non_linear_layers)
+
+            last_non_linear_state = x
             for idx, non_linear_layer in enumerate(self.non_linear_layers):
-                is_dim_2 = last_non_linear_state.dim() == 2
-                for t in range(last_non_linear_state.shape[1]):
-                    xt = last_non_linear_state[:, t].unsqueeze(1) if is_dim_2 else last_non_linear_state[:, t]
+                is_dim2 = last_non_linear_state.dim() == 2
+                for t in range(seq_len):
+                    xt = last_non_linear_state[:, t].unsqueeze(1) if is_dim2 else last_non_linear_state[:, t]
                     state = non_linear_layer(xt, last_memory_state[:, t, :])
-                    non_linear_state[:, t, :].copy_(state)
-                non_linear_states.append(non_linear_state)
-                non_linear_states_last.append(non_linear_state[:, -1, :])
-                last_non_linear_state = non_linear_state
+                    non_linear_states[idx][t] = state
+                non_linear_states[idx] = torch.stack(non_linear_states[idx], dim=1)
+                last_non_linear_state = non_linear_states[idx]
 
         if not self._just_memory:
             if self._concatenate_non_linear:
-                non_linear_states = torch.cat(non_linear_states, dim=2)
-                non_linear_states_last = torch.cat(non_linear_states_last, dim=1)
+                non_linear_states = torch.cat(non_linear_states, dim=-1)
             else:
                 non_linear_states = non_linear_states[-1]
-                non_linear_states_last = non_linear_states_last[-1]
+
         if self._concatenate_memory:
-            memory_states = torch.cat(memory_states, dim=2)
-            memory_states_last = torch.cat(memory_states_last, dim=1)
+            memory_states = torch.cat(memory_states, dim=-1)
         else:
             memory_states = memory_states[-1]
-            memory_states_last = memory_states_last[-1]
 
         if not self._just_memory:
-            return (non_linear_states[:, self._initial_transients:, :], non_linear_states_last,
-                    memory_states[:, self._initial_transients:, :], memory_states_last)
+            return (non_linear_states[:, self._initial_transients:, :], non_linear_states[:, -1, :],
+                    memory_states[:, self._initial_transients:, :], memory_states[:, -1, :])
         else:
-            return None, None, memory_states[:, self._initial_transients:, :], memory_states_last
+            return None, None, memory_states[:, self._initial_transients:, :], memory_states[:, -1, :]
 
     @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
