@@ -67,9 +67,9 @@ class MemoryCell(torch.nn.Module):
 
     @torch.no_grad()
     def forward(self, xt: torch.Tensor) -> torch.FloatTensor:
-        # m(t) =                    +             Vx * x(t)
-        self._memory_state = torch.addmm(torch.matmul(xt, self.input_memory_kernel),
-                                         self._memory_state, self.memory_kernel)  # Vm * m(t-1)
+        # m(t) = Vm * m(t-1) + Vx * x(t)
+        torch.addmm(torch.matmul(xt, self.input_memory_kernel),
+                    self._memory_state, self.memory_kernel, out=self._memory_state)
 
         return self._memory_state
 
@@ -214,7 +214,7 @@ class RMNCell(torch.nn.Module):
         if just_memory:
             self.non_linear = None
         else:
-            self.non_linear = NonLinearCell(input_units, non_linear_units,
+            self.non_linear = NonLinearCell(input_units, non_linear_units, memory_units,
                                             input_non_linear_scaling=input_non_linear_scaling,
                                             memory_non_linear_scaling=memory_non_linear_scaling,
                                             input_non_linear_connectivity=input_non_linear_connectivity,

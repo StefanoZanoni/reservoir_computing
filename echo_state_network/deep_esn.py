@@ -147,6 +147,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
             layer_input = state
 
         states = torch.cat(states, dim=2) if self._concatenate else states[-1]
+        states_last = states_last[-1]
 
         return states, states_last
 
@@ -170,7 +171,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
             for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
                 x, y = x.to(device), y.to(device)
                 if use_last_state:
-                    state = self(x)[1][-1]
+                    state = self(x)[1]
                 else:
                     state = self(x)[0]
                 states[idx:idx + batch_size] = state.detach().cpu().numpy()
@@ -214,7 +215,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
             if use_last_state:
-                state = self(x)[1][-1]
+                state = self(x)[1]
             else:
                 state = self(x)[0]
             states[idx:idx + batch_size] = state.detach().cpu().numpy()
@@ -253,7 +254,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         for x, _ in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x = x.to(device)
             if use_last_state:
-                state = self(x)[1][-1]
+                state = self(x)[1]
             else:
                 state = self(x)[0]
             states[idx:idx + batch_size] = state.detach().cpu().numpy()

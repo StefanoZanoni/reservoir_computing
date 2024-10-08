@@ -295,6 +295,4 @@ class EchoStateNetwork(torch.nn.Module):
             state = self.net(xt)
             states[:, t, :].copy_(state)
 
-        states = states[:, self._initial_transients:, :]
-
-        return states
+        return states[:, self._initial_transients:, :]
