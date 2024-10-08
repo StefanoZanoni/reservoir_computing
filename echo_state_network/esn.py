@@ -103,6 +103,7 @@ class ReservoirCell(torch.nn.Module):
         validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity,
                         distribution, non_linearity)
 
+        self.recurrent_units = recurrent_units
         self._leaky_rate = leaky_rate
         self._one_minus_leaky_rate = 1 - leaky_rate
 
@@ -181,7 +182,7 @@ class ReservoirCell(torch.nn.Module):
         return self._forward_function(xt)
 
     def reset_state(self, batch_size: int, device: torch.device) -> None:
-        self._state = torch.zeros((batch_size, self.recurrent_kernel.shape[0]), dtype=torch.float32,
+        self._state = torch.zeros((batch_size, self.recurrent_units), dtype=torch.float32,
                                   requires_grad=False, device=device)
 
 
@@ -285,14 +286,13 @@ class EchoStateNetwork(torch.nn.Module):
         """
 
         seq_len = x.shape[1]
-        states = torch.empty((x.shape[0], seq_len, self.net.recurrent_kernel.shape[0]), dtype=torch.float32,
+        states = torch.empty((x.shape[0], seq_len, self.net.recurrent_units), dtype=torch.float32,
                              requires_grad=False, device=x.device)
 
         is_dim_2 = x.dim() == 2
 
         for t in range(seq_len):
             xt = x[:, t].unsqueeze(1) if is_dim_2 else x[:, t]
-            state = self.net(xt)
-            states[:, t, :].copy_(state)
+            states[:, t, :].copy_(self.net(xt))
 
         return states[:, self._initial_transients:, :]

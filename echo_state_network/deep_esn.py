@@ -137,16 +137,30 @@ class DeepEchoStateNetwork(torch.nn.Module):
             raise RuntimeError('Model has not been trained yet.')
 
         layer_input = x
-        states = [None] * len(self.reservoir)
+        states = []
 
         for idx, reservoir_layer in enumerate(self.reservoir):
             state = reservoir_layer(layer_input)
-            states[idx] = state
+            states.append(state)
             layer_input = state
 
         states = torch.cat(states, dim=2) if self._concatenate else states[-1]
 
         return states, states[:, -1, :]
+
+    def _forward(self, x: torch.Tensor) -> tuple:
+
+        layer_input = x
+        states = []
+
+        for idx, reservoir_layer in enumerate(self.reservoir):
+            state = reservoir_layer(layer_input)
+            states.append(state)
+            layer_input = state
+
+        states = torch.cat(states, dim=2) if self._concatenate else states[-1]
+
+        return states
 
     @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
@@ -168,11 +182,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
         try:
             for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
                 x, y = x.to(device), y.to(device)
-                if use_last_state:
-                    state = self(x)[1]
-                else:
-                    state = self(x)[0]
-                states[idx:idx + batch_size] = state.detach().cpu().numpy()
+                states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \
+                    else self._forward(x)[0].cpu().numpy()
                 ys[idx:idx + batch_size] = y.cpu().numpy()
                 idx += batch_size
 
@@ -213,11 +224,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
         idx = 0
         for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
-            if use_last_state:
-                state = self(x)[1]
-            else:
-                state = self(x)[0]
-            states[idx:idx + batch_size] = state.detach().cpu().numpy()
+            states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \
+                else self._forward(x)[0].cpu().numpy()
             ys[idx:idx + batch_size] = y.cpu().numpy()
             idx += batch_size
 
@@ -253,11 +261,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
         idx = 0
         for x, _ in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x = x.to(device)
-            if use_last_state:
-                state = self(x)[1]
-            else:
-                state = self(x)[0]
-            states[idx:idx + batch_size] = state.detach().cpu().numpy()
+            states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \
+                else self._forward(x)[0].cpu().numpy()
             idx += batch_size
 
         if not use_last_state:
