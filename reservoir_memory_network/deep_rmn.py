@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from scipy.spatial.distance import num_obs_y
+from torch.xpu import device
 
 from tqdm import tqdm
 
@@ -250,39 +251,36 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             for non_linear_layer in self.non_linear_layers:
                 non_linear_layer.reset_state(batch_size, device)
 
-    @torch.no_grad()
-    def forward(self, x: torch.Tensor)\
+    def _forward_core(self, x: torch.Tensor) \
             -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
-
-        if not self._trained:
-            raise ValueError('The model has not been trained yet. Use the fit method to train the model.')
 
         seq_len = x.shape[1]
 
-        memory_states = [[None] * seq_len] * len(self.memory_layers)
+        memory_states = []
 
         last_memory_state = x
         for idx, memory_layer in enumerate(self.memory_layers):
+            layer_states = torch.empty((x.shape[0], seq_len, memory_layer.memory_kernel.shape[0]),
+                                       device=x.device, requires_grad=False, dtype=torch.float32)
             is_dim2 = last_memory_state.dim() == 2
             for t in range(seq_len):
                 xt = last_memory_state[:, t].unsqueeze(1) if is_dim2 else last_memory_state[:, t]
-                state = memory_layer(xt)
-                memory_states[idx][t] = state.clone()
-            memory_states[idx] = torch.stack(memory_states[idx], dim=1)
-            last_memory_state = memory_states[idx]
+                layer_states[:, t, :].copy_(memory_layer(xt))
+            memory_states.append(layer_states)
+            last_memory_state = layer_states
 
         if not self._just_memory:
-            non_linear_states = [[None] * seq_len] * len(self.non_linear_layers)
-
+            non_linear_states = []
             last_non_linear_state = x
             for idx, non_linear_layer in enumerate(self.non_linear_layers):
+                layer_states = torch.empty((x.shape[0], seq_len, non_linear_layer.non_linear_kernel.shape[0]),
+                                           device=x.device, requires_grad=False, dtype=torch.float32)
                 is_dim2 = last_non_linear_state.dim() == 2
                 for t in range(seq_len):
                     xt = last_non_linear_state[:, t].unsqueeze(1) if is_dim2 else last_non_linear_state[:, t]
-                    state = non_linear_layer(xt, last_memory_state[:, t, :])
-                    non_linear_states[idx][t] = state.clone()
-                non_linear_states[idx] = torch.stack(non_linear_states[idx], dim=1)
-                last_non_linear_state = non_linear_states[idx]
+                    layer_states[:, t, :].copy_(non_linear_layer(xt, last_memory_state[:, t, :]))
+                non_linear_states.append(layer_states)
+                last_non_linear_state = layer_states
 
         if not self._just_memory:
             if self._concatenate_non_linear:
@@ -300,6 +298,20 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                     memory_states[:, self._initial_transients:, :], memory_states[:, -1, :])
         else:
             return None, None, memory_states[:, self._initial_transients:, :], memory_states[:, -1, :]
+
+    @torch.no_grad()
+    def forward(self, x: torch.Tensor) \
+            -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+
+        if not self._trained:
+            raise ValueError('The model has not been trained yet. Use the fit method to train the model.')
+
+        return self._forward_core(x)
+
+    def _forward(self, x: torch.Tensor) \
+            -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+
+        return self._forward_core(x)
 
     @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
@@ -322,7 +334,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
 
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
-                           state_size), dtype=np.float32) if not use_last_state\
+                           state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
         ys = np.empty((num_batches * batch_size, data.dataset.target.shape[0]), dtype=np.float32)
 
@@ -331,9 +343,8 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         try:
             for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
                 x, y = x.to(device), y.to(device)
-                state = self(x)[3 if self._just_memory else 1] if use_last_state \
-                    else self(x)[2 if self._just_memory else 0]
-                states[idx:idx + batch_size] = state.detach().cpu().numpy()
+                states[idx:idx + batch_size] = self._forward(x)[3 if self._just_memory else 1].cpu().numpy()\
+                    if use_last_state else self._forward(x)[2 if self._just_memory else 0].cpu().numpy()
                 ys[idx:idx + batch_size] = y.cpu().numpy()
                 idx += batch_size
 
@@ -387,9 +398,8 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         idx = 0
         for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
-            state = self(x)[3 if self._just_memory else 1] if use_last_state \
-                else self(x)[2 if self._just_memory else 0]
-            states[idx:idx + batch_size] = state.detach().cpu().numpy()
+            states[idx:idx + batch_size] = self._forward(x)[3 if self._just_memory else 1].cpu().numpy()\
+                if use_last_state else self._forward(x)[2 if self._just_memory else 0].cpu().numpy()
             ys[idx:idx + batch_size] = y.cpu().numpy()
             idx += batch_size
 
@@ -438,9 +448,8 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         idx = 0
         for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
             x = x.to(device)
-            state = self(x)[3 if self._just_memory else 1] if use_last_state \
-                else self(x)[2 if self._just_memory else 0]
-            states[idx:idx + batch_size] = state.detach().cpu().numpy()
+            states[idx:idx + batch_size] = self._forward(x)[3 if self._just_memory else 1].cpu().numpy()\
+                if use_last_state else self._forward(x)[2 if self._just_memory else 0].cpu().numpy()
             idx += batch_size
 
         if not use_last_state:

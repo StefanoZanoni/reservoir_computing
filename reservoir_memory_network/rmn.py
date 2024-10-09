@@ -232,11 +232,9 @@ class RMNCell(torch.nn.Module):
     def forward(self, xt: torch.Tensor) -> tuple[torch.FloatTensor | None, torch.FloatTensor]:
 
         memory_state = self.memory(xt)
-        if self.non_linear is not None:
-            non_linear_state = self.non_linear(xt, memory_state)
-            return non_linear_state, memory_state
-        else:
-            return None, memory_state
+        non_linear_state = None if self.non_linear is None else self.non_linear(xt, memory_state)
+
+        return non_linear_state, memory_state
 
     def reset_state(self, batch_size: int, device: torch.device) -> None:
         self.memory.reset_state(batch_size, device)
