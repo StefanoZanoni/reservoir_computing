@@ -43,6 +43,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
                  ) -> None:
 
         super().__init__()
+        self._initial_transients = initial_transients
         self._scaler = None
         self._concatenate = concatenate
         self._initial_transients = initial_transients
@@ -66,7 +67,6 @@ class DeepEchoStateNetwork(torch.nn.Module):
             EchoStateNetwork(
                 input_units,
                 self._recurrent_units + total_units % number_of_layers,
-                initial_transients=initial_transients,
                 input_scaling=input_scaling,
                 spectral_radius=spectral_radius,
                 leaky_rate=leaky_rate,
@@ -131,36 +131,31 @@ class DeepEchoStateNetwork(torch.nn.Module):
             layer.net.reset_state(batch_size, device)
 
     @torch.no_grad()
-    def forward(self, x: torch.Tensor) -> tuple:
-
-        if not self._trained:
-            raise RuntimeError('Model has not been trained yet.')
-
+    def _forward_core(self, x: torch.Tensor) -> tuple:
         layer_input = x
         states = []
 
         for idx, reservoir_layer in enumerate(self.reservoir):
             state = reservoir_layer(layer_input)
-            states.append(state)
+            states.append(state[:, self._initial_transients:, :])
             layer_input = state
 
         states = torch.cat(states, dim=2) if self._concatenate else states[-1]
 
         return states, states[:, -1, :]
 
+    @torch.no_grad()
+    def forward(self, x: torch.Tensor) -> tuple:
+
+        if not self._trained:
+            raise RuntimeError('Model has not been trained yet.')
+
+        return self._forward_core(x)
+
+    @torch.no_grad()
     def _forward(self, x: torch.Tensor) -> tuple:
 
-        layer_input = x
-        states = []
-
-        for idx, reservoir_layer in enumerate(self.reservoir):
-            state = reservoir_layer(layer_input)
-            states.append(state)
-            layer_input = state
-
-        states = torch.cat(states, dim=2) if self._concatenate else states[-1]
-
-        return states
+        return self._forward_core(x)
 
     @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
@@ -255,7 +250,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         state_size = self._total_units
 
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
-                           state_size), dtype=np.float32) if not use_last_state\
+                           state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
 
         idx = 0
