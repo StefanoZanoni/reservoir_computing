@@ -251,6 +251,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             for non_linear_layer in self.non_linear_layers:
                 non_linear_layer.reset_state(batch_size, device)
 
+    @torch.no_grad()
     def _forward_core(self, x: torch.Tensor) \
             -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
 
@@ -308,6 +309,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
 
         return self._forward_core(x)
 
+    @torch.no_grad()
     def _forward(self, x: torch.Tensor) \
             -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
 
