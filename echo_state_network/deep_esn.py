@@ -198,6 +198,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> tuple:
         """
         Forward pass of the model.
+        This method is meant to be used after the fit method has been called.
 
         :param x: The input tensor.
 

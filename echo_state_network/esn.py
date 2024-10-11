@@ -136,9 +136,8 @@ class ReservoirCell(torch.nn.Module):
         # x(t) = (1 - α) * x(t-1) + α * f(W_in * u(t) + W * x(t-1) + b)
         self._state.mul_(self._one_minus_leaky_rate).add_(
             self._non_linear_function(
-                torch.matmul(xt, self.input_kernel)
-                .addmm_(self._state, self.recurrent_kernel)
-                .add_(self.bias)
+                torch.addmm(self.bias, self._state, self.recurrent_kernel)
+                .addmm_(xt, self.input_kernel)
             )
             .mul_(self._leaky_rate)
         )
@@ -158,9 +157,8 @@ class ReservoirCell(torch.nn.Module):
         # x(t) = x(t-1) + ε * f(W_in * u(t) + (W - γ * I) * x(t-1) + b)
         self._state.add_(
             self._non_linear_function(
-                torch.matmul(xt, self.input_kernel)
-                .addmm_(self._state, self.recurrent_kernel)
-                .add_(self.bias)
+                torch.addmm(self.bias, self._state, self.recurrent_kernel)
+                .addmm_(xt, self.input_kernel)
             )
             .mul_(self._epsilon)
         )

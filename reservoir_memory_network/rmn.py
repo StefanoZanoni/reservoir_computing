@@ -132,7 +132,7 @@ class MemoryCell(torch.nn.Module):
         :return: The memory state at time t.
         """
 
-        # m(t) = Vm * m(t-1) + Vu * u(t)
+        # m(t) = Vm * m(t-1) + Vx * x(t)
         torch.addmm(torch.matmul(xt, self.input_memory_kernel),
                     self._memory_state, self.memory_kernel, out=self._memory_state)
 
@@ -246,13 +246,12 @@ class NonLinearCell(torch.nn.Module):
         :return: The non-linear state at time t.
         """
 
-        # x(t) = (1 - a) * x(t-1) + a * f(Wx * x(t-1) + Wm * m(t) + Wu * u(t) + b)
+        # h(t) = (1 - a) * h(t-1) + a * f(Wx * h(t-1) + Wm * m(t) + Wx * x(t) + b)
         self._non_linear_state.mul_(self._one_minus_leaky_rate).add_(
             self._non_linear_function(
-                torch.matmul(xt, self.input_non_linear_kernel)
+                torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
+                .addmm_(xt, self.input_non_linear_kernel)
                 .addmm_(memory_state, self.memory_non_linear_kernel)
-                .addmm_(self._non_linear_state, self.non_linear_kernel)
-                .add_(self.bias)
             )
             .mul_(self._leaky_rate)
         )
@@ -269,13 +268,12 @@ class NonLinearCell(torch.nn.Module):
         :return: The non-linear state at time t.
         """
 
-        # x(t) = x(t-1) + ε * f(Wu * u(t) + Wm * m(t) + (W - γ * I) * x(t-1) + b)
+        # h(t) = h(t-1) + ε * f(Wx * x(t) + Wm * m(t) + (W - γ * I) * h(t-1) + b)
         self._non_linear_state.add_(
             self._non_linear_function(
-                torch.matmul(xt, self.input_non_linear_kernel)
+                torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
+                .addmm_(xt, self.input_non_linear_kernel)
                 .addmm_(memory_state, self.memory_non_linear_kernel)
-                .addmm_(self._non_linear_state, self.non_linear_kernel)
-                .add_(self.bias)
             )
             .mul_(self._epsilon)
         )
@@ -444,14 +442,10 @@ class ReservoirMemoryNetwork(torch.nn.Module):
             xt = x[:, t].unsqueeze(1) if is_dim_2 else x[:, t]
             if not self.just_memory:
                 non_linear_state, memory_state = self.net(xt)
-                non_linear_states[:, t].copy_(non_linear_state)
-                memory_states[:, t].copy_(memory_state)
+                non_linear_states[:, t, :].copy_(non_linear_state)
+                memory_states[:, t, :].copy_(memory_state)
             else:
-                _, memory_state = self.net(xt)
-                memory_states[:, t].copy_(memory_state)
+                memory_states[:, t].copy_(self.net(xt)[1])
 
-        if not self.just_memory:
-            non_linear_states = non_linear_states[:, self._initial_transients:]
-        memory_states = memory_states[:, self._initial_transients:]
-
-        return (non_linear_states, memory_states) if not self.just_memory else (None, memory_states)
+        return (non_linear_states[:, self._initial_transients:, :], memory_states[:, self._initial_transients:, :]) \
+            if not self.just_memory else (None, memory_states[:, self._initial_transients:, :])
