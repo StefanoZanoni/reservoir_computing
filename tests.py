@@ -48,9 +48,8 @@ def compute_determination_coefficient(y_true, y_pred):
     y_pred = y_pred
     y_true_mean = np.mean(y_true)
     numerator = np.sum((y_true - y_true_mean) * (y_pred - y_true_mean)) ** 2
-    denominator_target_t = np.sum((y_true - y_true_mean) ** 2)
-    denominator_prediction_t = np.sum((y_pred - y_true_mean) ** 2)
-    return numerator / (denominator_target_t * denominator_prediction_t)
+    denominator = np.sum((y_true - y_true_mean) ** 2) * np.sum((y_pred - y_true_mean) ** 2)
+    return numerator / denominator
 
 
 if __name__ == '__main__':
@@ -447,7 +446,7 @@ if __name__ == '__main__':
         mcs_test = []
         validation_determination_coefficients = []
         test_determination_coefficients = []
-        for run in range(3):
+        for run in range(1):
             mc_ks_validation = []
             mc_ks_test = []
             for k in tqdm(range(max_delay), 'Delay', disable=False):
