@@ -17,6 +17,12 @@ from echo_state_network import DeepEchoStateNetwork
 from reservoir_memory_network import DeepReservoirMemoryNetwork
 from datasets import SequentialMNIST, MemoryCapacity
 
+import warnings
+import sklearn
+
+# Disable all warnings from sklearn
+warnings.filterwarnings("ignore", module="sklearn")
+
 torch.set_num_threads(os.cpu_count())
 os.environ['OMP_NUM_THREADS'] = str(os.cpu_count())
 os.environ['MKL_NUM_THREADS'] = str(os.cpu_count())
@@ -231,7 +237,7 @@ if __name__ == '__main__':
                            'validation_batch_size': validation_batch_size,
                            'testing_batch_size': testing_batch_size,
 
-                           'number_of_layers': number_of_non_linear_layers,
+                           'number_of_non_linear_layers': number_of_non_linear_layers,
                            'concatenate_non_linear': concatenate_non_linear,
 
                            'input_units': input_units,
@@ -388,7 +394,6 @@ if __name__ == '__main__':
                                            gamma=gamma, alpha=alpha, max_iter=max_iter, tolerance=tolerance,
                                            legendre=legendre_memory, theta=theta, just_memory=just_memory).to(device)
 
-    model = torch.compile(model)
     # choose a task
     if dataset_name == 'sequential_mnist':
         data = SequentialMNIST(training=True)
@@ -434,7 +439,7 @@ if __name__ == '__main__':
         if model_name == 'esn':
             max_delay = non_linear_units * 2
         elif model_name == 'rmn' and not just_memory:
-            max_delay = (non_linear_units + memory_units) * 2
+            max_delay = non_linear_units * 2
         else:
             max_delay = memory_units * 2
 
@@ -445,7 +450,7 @@ if __name__ == '__main__':
         for run in range(3):
             mc_ks_validation = []
             mc_ks_test = []
-            for k in tqdm(range(max_delay), 'Delay', disable=True):
+            for k in tqdm(range(max_delay), 'Delay', disable=False):
                 k += 1  # k starts from 1
                 training_data = MemoryCapacity(k, training=True)
                 training_data.target = training_data.target[initial_transients:]
