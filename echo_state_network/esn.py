@@ -1,54 +1,56 @@
 import torch
-import numpy as np
 from sklearn.linear_model import RidgeClassifier, Ridge
 from sklearn.preprocessing import StandardScaler
-from tqdm import tqdm
 from typing import Callable
 from utils.initialization import init_input_kernel, init_non_linear_kernel, init_bias
 
 
-def validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity,
-                    distribution, non_linearity):
+def validate_params(input_units: int, recurrent_units: int, leaky_rate: float, recurrent_connectivity: int,
+                    input_connectivity: int, distribution: str, non_linearity: str, signs_from: str) -> None:
     """
     Validates the parameters for the ReservoirCell.
 
-    Args:
-        input_units (int): Number of input units.
-        recurrent_units (int): Number of recurrent units.
-        spectral_radius (float): Spectral radius of the recurrent weight matrix.
-        leaky_rate (float): Leaky integration rate.
-        recurrent_connectivity (int): Number of connections in the recurrent weight matrix.
-        distribution (str): Distribution type for weight initialization.
-        non_linearity (str): Non-linearity function to use.
-    
-    Raises:
-        ValueError: If any of the parameters are invalid.
+    :param input_units: Number of input units.
+    :param recurrent_units: Number of recurrent units.
+    :param leaky_rate: Leaky integration rate.
+    :param recurrent_connectivity: Number of connections in the recurrent weight matrix.
+    :param input_connectivity: Number of connections in the input weight matrix.
+    :param distribution: Distribution type for weight initialization.
+    :param non_linearity: Non-linearity function to use.
+    :param signs_from: Source for signs of weights.
+
+    :raises ValueError: If any of the parameters are invalid.
     """
 
     if input_units < 1:
         raise ValueError("Input units must be greater than 0.")
     if recurrent_units < 1:
         raise ValueError("Recurrent units must be greater than 0.")
-    if not (0 <= spectral_radius <= 1):
-        raise ValueError("Spectral radius must be in [0, 1].")
     if not (0 < leaky_rate <= 1):
         raise ValueError("Leaky rate must be in (0, 1].")
     if not (1 <= recurrent_connectivity <= recurrent_units):
         raise ValueError("Recurrent connectivity must be in [1, recurrent_units].")
+    if not (1 <= input_connectivity <= recurrent_connectivity):
+        raise ValueError("Input connectivity must be in [1, recurrent_units].")
     if distribution not in ['uniform', 'normal']:
         raise ValueError("Distribution must be 'uniform', or 'normal'.")
     if non_linearity not in ['tanh', 'identity']:
         raise ValueError("Non-linearity must be 'tanh' or 'identity'.")
+    if signs_from not in [None, 'random', 'pi', 'e', 'logistic']:
+        raise ValueError("Signs from must be None, 'random', 'pi', 'e', or 'logistic'.")
 
 
 class ReservoirCell(torch.nn.Module):
     """
     A single reservoir cell for the Echo State Network.
-
-    Attributes:
-        input_kernel (torch.Tensor): Input weight matrix.
-        recurrent_kernel (torch.Tensor): Recurrent weight matrix.
-        bias (torch.Tensor): Bias term.
+    It is a recurrent neural network cell with a leaky integrator or Euler integration.
+    The update rule for the reservoir cell with leaky integrator neurons is given by:
+     x(t) = (1 - α) * x(t-1) + α * f(W_in * u(t) + W * x(t-1) + b),
+    where f is the non-linearity function, W_in is the input weight matrix, W is the recurrent weight matrix, b is the
+    bias term, and α is the leaky integration rate.
+    The update rule for the reservoir cell with Euler integrator is given by:
+     x(t) = x(t-1) + epsilon * f(W_in * u(t) + (W - gamma * I) * x(t-1) + b), where I is the identity matrix, and
+    epsilon is the Euler integration step size, and gamma is the diffusion coefficient for the recurrent weights.
     """
 
     def __init__(self,
@@ -76,32 +78,31 @@ class ReservoirCell(torch.nn.Module):
         """
         Initializes the ReservoirCell.
 
-        Args:
-            input_units (int): Number of input units.
-            recurrent_units (int): Number of recurrent units.
-            input_scaling (float): Scaling factor for input weights.
-            recurrent_scaling (float): Scaling factor for recurrent weights.
-            spectral_radius (float): Spectral radius of the recurrent weight matrix.
-            leaky_rate (float): Leaky integration rate.
-            input_connectivity (int): Number of connections in the input weight matrix.
-            recurrent_connectivity (int): Number of connections in the recurrent weight matrix.
-            bias (bool): Whether to use a bias term.
-            bias_scaling (float, optional): Scaling factor for the bias term.
-            distribution (str): Distribution type for weight initialization.
-            signs_from (str, optional): Source for signs of weights.
-            fixed_input_kernel (bool): Whether to use a fixed input kernel.
-            non_linearity (str): Non-linearity function to use.
-            effective_rescaling (bool): Whether to use effective rescaling.
-            circular_recurrent_kernel (bool): Whether to use a circular recurrent kernel.
-            euler (bool): Whether to use Euler integration.
-            epsilon (float): Euler integration step size.
-            gamma (float): Scaling factor for recurrent weights.
+        :param input_units: Number of input units.
+        :param recurrent_units: Number of recurrent units.
+        :param input_scaling: Scaling factor for input weights.
+        :param recurrent_scaling: Scaling factor for recurrent weights.
+        :param spectral_radius: Spectral radius of the recurrent weight matrix.
+        :param leaky_rate: Leaky integration rate.
+        :param input_connectivity: Number of connections in the input weight matrix.
+        :param recurrent_connectivity: Number of connections in the recurrent weight matrix.
+        :param bias: Whether to use a bias term.
+        :param bias_scaling: Scaling factor for the bias term.
+        :param distribution: Distribution type for weight initialization.
+        :param signs_from: Source for signs of weights.
+        :param fixed_input_kernel: Whether to use a fixed input kernel.
+        :param non_linearity: Non-linearity function to use.
+        :param effective_rescaling: Whether to rescale the recurrent weights according to the leaky rate.
+        :param circular_recurrent_kernel: Whether to use a circular recurrent kernel.
+        :param euler: Whether to use Euler integration.
+        :param epsilon: Euler integration step size.
+        :param gamma: Diffusion coefficient for the Euler recurrent kernel.
         """
 
         super().__init__()
 
-        validate_params(input_units, recurrent_units, spectral_radius, leaky_rate, recurrent_connectivity,
-                        distribution, non_linearity)
+        validate_params(input_units, recurrent_units, leaky_rate, recurrent_connectivity, input_connectivity,
+                        distribution, non_linearity, signs_from)
 
         self.recurrent_units = recurrent_units
         self._leaky_rate = leaky_rate
@@ -116,6 +117,7 @@ class ReservoirCell(torch.nn.Module):
                                                        spectral_radius, leaky_rate, effective_rescaling,
                                                        circular_recurrent_kernel, euler, gamma, recurrent_scaling)
         self.bias = init_bias(bias, recurrent_units, input_scaling, bias_scaling)
+
         self._epsilon = epsilon
         self._non_linear_function: Callable = torch.tanh if non_linearity == 'tanh' else lambda x: x
         self._state = None
@@ -126,13 +128,12 @@ class ReservoirCell(torch.nn.Module):
         """
         Forward pass using the leaky integrator method.
 
-        Args:
-            xt (torch.Tensor): Input tensor at time t.
+        :param xt: Input tensor at time t.
 
-        Returns:
-            torch.FloatTensor: Updated state tensor.
+        :return : Updated state tensor.
         """
 
+        # x(t) = (1 - α) * x(t-1) + α * f(W_in * u(t) + W * x(t-1) + b)
         self._state.mul_(self._one_minus_leaky_rate).add_(
             self._non_linear_function(
                 torch.matmul(xt, self.input_kernel)
@@ -149,13 +150,12 @@ class ReservoirCell(torch.nn.Module):
         """
         Forward pass using the Euler integration method.
 
-        Args:
-            xt (torch.Tensor): Input tensor at time t.
+        :param xt: Input tensor at time t.
 
-        Returns:
-            torch.FloatTensor: Updated state tensor.
+        :return : Updated state tensor.
         """
 
+        # x(t) = x(t-1) + ε * f(W_in * u(t) + (W - γ * I) * x(t-1) + b)
         self._state.add_(
             self._non_linear_function(
                 torch.matmul(xt, self.input_kernel)
@@ -171,16 +171,21 @@ class ReservoirCell(torch.nn.Module):
         """
         Forward pass through the reservoir cell.
 
-        Args:
-            xt (torch.Tensor): Input tensor at time t.
+        :param xt: Input tensor at time t.
 
-        Returns:
-            torch.FloatTensor: Updated state tensor.
+        :return : Updated state tensor.
         """
 
         return self._forward_function(xt)
 
     def reset_state(self, batch_size: int, device: torch.device) -> None:
+        """
+        Resets the state of the reservoir cell.
+
+        :param batch_size: The batch size.
+        :param device: The device to use.
+        """
+
         self._state = torch.zeros((batch_size, self.recurrent_units), dtype=torch.float32,
                                   requires_grad=False, device=device)
 
@@ -188,13 +193,6 @@ class ReservoirCell(torch.nn.Module):
 class EchoStateNetwork(torch.nn.Module):
     """
     An Echo State Network (ESN) for time series prediction/classification tasks.
-
-    Attributes:
-        scaler (StandardScaler): Scaler for standardizing the states.
-        _initial_transients (int): Number of initial transient states to discard.
-        task (str): Task type ('classification' or 'regression').
-        net (ReservoirCell): Reservoir cell of the ESN.
-        readout (RidgeClassifier or Ridge): Readout layer for the ESN.
     """
 
     def __init__(self,
@@ -223,31 +221,30 @@ class EchoStateNetwork(torch.nn.Module):
         """
         Initializes the EchoStateNetwork.
 
-        Args:
-            task (str): Task type ('classification' or 'regression').
-            input_units (int): Number of input units.
-            recurrent_units (int): Number of recurrent units.
-            initial_transients (int): Number of initial transient states to discard.
-            input_scaling (float): Scaling factor for input weights.
-            recurrent_scaling (float): Scaling factor for recurrent weights.
-            spectral_radius (float): Spectral radius of the recurrent weight matrix.
-            leaky_rate (float): Leaky integration rate.
-            input_connectivity (int): Number of connections in the input weight matrix.
-            recurrent_connectivity (int): Number of connections in the recurrent weight matrix.
-            bias (bool): Whether to use a bias term.
-            bias_scaling (float, optional): Scaling factor for the bias term.
-            distribution (str): Distribution type for weight initialization.
-            signs_from (str, optional): Source for signs of weights.
-            fixed_input_kernel (bool): Whether to use a fixed input kernel.
-            non_linearity (str): Non-linearity function to use.
-            effective_rescaling (bool): Whether to use effective rescaling.
-            circular_recurrent_kernel (bool): Whether to use a circular recurrent kernel.
-            euler (bool): Whether to use Euler integration.
-            epsilon (float): Euler integration step size.
-            gamma (float): Scaling factor for recurrent weights.
-            alpha (float): Regularization strength for the readout layer.
-            max_iter (int): Maximum number of iterations for the readout layer.
-            tolerance (float): Tolerance for the readout layer.
+        :param task: Task type ('classification' or 'regression').
+        :param input_units: Number of input units.
+        :param recurrent_units: Number of recurrent units.
+        :param initial_transients: Number of initial transient states to discard.
+        :param input_scaling: Scaling factor for input weights.
+        :param recurrent_scaling: Scaling factor for recurrent weights.
+        :param spectral_radius: Spectral radius of the recurrent weight matrix.
+        :param leaky_rate: Leaky integration rate.
+        :param input_connectivity: Number of connections in the input weight matrix.
+        :param recurrent_connectivity: Number of connections in the recurrent weight matrix.
+        :param bias: Whether to use a bias term.
+        :param bias_scaling: Scaling factor for the bias term.
+        :param distribution: Distribution type for weight initialization.
+        :param signs_from: Source for signs of weights.
+        :param fixed_input_kernel: Whether to use a fixed input kernel.
+        :param non_linearity: Non-linearity function to use.
+        :param effective_rescaling: Whether to use effective rescaling.
+        :param circular_recurrent_kernel: Whether to use a circular recurrent kernel.
+        :param euler: Whether to use Euler integration.
+        :param epsilon: Euler integration step size.
+        :param gamma: Diffusion coefficient for the Euler recurrent kernel.
+        :param alpha: Regularization strength for the readout layer.
+        :param max_iter: Maximum number of iterations for the readout layer.
+        :param tolerance: Tolerance for the readout layer.
         """
 
         super().__init__()
@@ -277,11 +274,9 @@ class EchoStateNetwork(torch.nn.Module):
         """
         Forward pass through the Echo State Network.
 
-        Args:
-            x (torch.Tensor): Input tensor.
+        :param x: Input tensor.
 
-        Returns:
-            torch.Tensor: States tensor after passing through the network.
+        :return : States tensor after passing through the network.
         """
 
         seq_len = x.shape[1]

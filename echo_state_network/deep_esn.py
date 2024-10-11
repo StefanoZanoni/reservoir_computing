@@ -10,6 +10,10 @@ from sklearn.preprocessing import StandardScaler
 
 
 class DeepEchoStateNetwork(torch.nn.Module):
+    """
+    Deep Echo State Network model. It is composed of a stack of Echo State Networks (ESNs) and a readout layer.
+    """
+
     def __init__(self,
                  task: str,
                  input_units: int,
@@ -41,6 +45,38 @@ class DeepEchoStateNetwork(torch.nn.Module):
                  max_iter: int = 1000,
                  tolerance: float = 1e-4,
                  ) -> None:
+        """
+        Initializes the Deep Echo State Network model.
+
+        :param task: The task to perform. It can be either 'classification' or 'regression'.
+        :param input_units: Number of input units.
+        :param total_units: Number of total units in the reservoir.
+        :param number_of_layers: Number of layers in the deep ESN.
+        :param initial_transients: Number of initial transients to discard.
+        :param input_scaling: Input scaling factor.
+        :param recurrent_scaling: Recurrent scaling factor.
+        :param inter_scaling: Interlayer scaling factor.
+        :param spectral_radius: Spectral radius of the recurrent weight matrix.
+        :param leaky_rate: Leaky rate of the neurons.
+        :param input_connectivity: Input connectivity.
+        :param recurrent_connectivity: Recurrent connectivity.
+        :param inter_connectivity: Interlayer connectivity.
+        :param bias: Whether to use bias.
+        :param bias_scaling: Bias scaling factor.
+        :param distribution: Distribution of the weights.
+        :param signs_from: Source of the signs of the weights.
+        :param fixed_input_kernel: Whether to use a fixed input kernel.
+        :param non_linearity: Non-linearity function.
+        :param effective_rescaling: Whether to scale the weights considering the leaky rate.
+        :param concatenate: Whether to concatenate the reservoir layers states.
+        :param circular_recurrent_kernel: Whether to use a circular recurrent kernel.
+        :param euler: Whether to use the Euler method.
+        :param epsilon: Euler method integration step size.
+        :param gamma: Diffusion coefficient for the Euler recurrent kernel.
+        :param alpha: Regularization strength for the readout layer.
+        :param max_iter: Maximum number of iterations for the readout layer.
+        :param tolerance: Tolerance for the readout layer.
+        """
 
         super().__init__()
         self._initial_transients = initial_transients
@@ -51,8 +87,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
 
         # In case in which all the reservoir layers are concatenated, each level
         # contains units/layers neurons. This is done to keep the number of
-        # _state variables projected to the next layer fixed;
-        # i.e., the number of trainable parameters does not depend on concatenate_non_linear
+        # state variables projected to the next layer fixed;
+        # i.e., the number of trainable parameters does not depend on concatenate_non_linear.
         if concatenate:
             self._recurrent_units = max(1, int(total_units / number_of_layers))
             input_connectivity = max(1, int(input_connectivity / number_of_layers))
@@ -127,11 +163,26 @@ class DeepEchoStateNetwork(torch.nn.Module):
         self._trained = False
 
     def _reset_state(self, batch_size: int, device: torch.device) -> None:
+        """
+        Resets the state of the reservoir layers.
+
+        :param batch_size: The batch size.
+        :param device: The device to use.
+        """
+
         for layer in self.reservoir:
             layer.net.reset_state(batch_size, device)
 
     @torch.no_grad()
-    def _forward_core(self, x: torch.Tensor) -> tuple:
+    def _forward_core(self, x: torch.Tensor) -> tuple[torch.FloatTensor, torch.FloatTensor]:
+        """
+        Forward pass of the model.
+
+        :param x: The input tensor.
+
+        :return: The state of the deep reservoir for all the time steps and the state for the last time step.
+        """
+
         layer_input = x
         states = []
 
@@ -145,6 +196,13 @@ class DeepEchoStateNetwork(torch.nn.Module):
         return states, states[:, -1, :]
 
     def forward(self, x: torch.Tensor) -> tuple:
+        """
+        Forward pass of the model.
+
+        :param x: The input tensor.
+
+        :return: The state of the deep reservoir for all the time steps and the state for the last time step.
+        """
 
         if not self._trained:
             raise RuntimeError('Model has not been trained yet.')
@@ -152,12 +210,28 @@ class DeepEchoStateNetwork(torch.nn.Module):
         return self._forward_core(x)
 
     def _forward(self, x: torch.Tensor) -> tuple:
+        """
+        Forward pass of the model.
+
+        :param x: The input tensor.
+
+        :return: The state of the deep reservoir for all the time steps and the state for the last time step.
+        """
 
         return self._forward_core(x)
 
     @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
             use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
+        """
+        Fits the model to the data.
+
+        :param data: The data to fit the model to.
+        :param device: The device to use.
+        :param standardize: Whether to standardize the data before training the readout.
+        :param use_last_state: Whether to use just the state at the last time step as input to the readout.
+        :param disable_progress_bar: Whether to disable the progress bar.
+        """
 
         batch_size = data.batch_size
         self._reset_state(batch_size, device)
@@ -165,6 +239,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         num_batches = len(data)
         state_size = self._total_units
 
+        # pre-allocate memory for the states and the targets
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
@@ -173,6 +248,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         self._trained = True
         idx = 0
         try:
+            # iterate over the data
             for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
                 x, y = x.to(device), y.to(device)
                 states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \
@@ -196,6 +272,17 @@ class DeepEchoStateNetwork(torch.nn.Module):
     @torch.no_grad()
     def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
               use_last_state: bool = True, disable_progress_bar: bool = False) -> float:
+        """
+        Scores the model on the data.
+
+        :param data: The data to score the model on.
+        :param device: The device to use.
+        :param standardize: Whether to standardize the data before scoring the readout.
+        :param use_last_state: Whether to use just the state at the last time step as input to the readout.
+        :param disable_progress_bar: Whether to disable the progress bar.
+
+        :return: The score of the model on the data.
+        """
 
         if not self._trained:
             raise RuntimeError('Model has not been trained yet.')
@@ -209,12 +296,14 @@ class DeepEchoStateNetwork(torch.nn.Module):
         num_batches = len(data)
         state_size = self._total_units
 
+        # pre-allocate memory for the states and the targets
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
         ys = np.empty((num_batches * batch_size, data.dataset.target.shape[0]), dtype=np.float32)
 
         idx = 0
+        # iterate over the data
         for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
             states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \
@@ -234,6 +323,17 @@ class DeepEchoStateNetwork(torch.nn.Module):
     @torch.no_grad()
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
                 use_last_state: bool = True, disable_progress_bar: bool = False) -> np.ndarray:
+        """
+        Predicts the target values of the data.
+
+        :param data: The data to predict the target values of.
+        :param device: The device to use.
+        :param standardize: Whether to standardize the data before predicting the target values.
+        :param use_last_state: Whether to use just the state at the last time step as input to the readout.
+        :param disable_progress_bar: Whether to disable the progress bar.
+
+        :return: The predicted target values of the data.
+        """
 
         if not self._trained:
             raise RuntimeError('Model has not been trained yet.')
@@ -247,11 +347,13 @@ class DeepEchoStateNetwork(torch.nn.Module):
         num_batches = len(data)
         state_size = self._total_units
 
+        # pre-allocate memory for the states
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
 
         idx = 0
+        # iterate over the data
         for x, _ in tqdm(data, desc='Fitting', disable=disable_progress_bar):
             x = x.to(device)
             states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \

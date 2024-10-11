@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 from mpmath import mp
 
 
@@ -15,23 +14,25 @@ def eye_init(M: int) -> torch.FloatTensor:
     if M <= 0:
         raise ValueError(f"Invalid number of units <<{M}>>. Must be positive.")
 
-    return torch.eye(M, dtype=torch.float32)
+    return torch.eye(M, dtype=torch.float32, requires_grad=False)
 
 
 def sparse_tensor_init(M: int, N: int, C: int = 1, distribution: str = 'uniform', scaling: float = 1.0,
                        signs_from: str | None = None) -> torch.FloatTensor:
     """
-    Generates an M x N matrix to be used as sparse kernel.
-    For each row only C elements are non-zero (i.e., each input dimension is projected only to C neurons).
-    The non-zero elements are generated randomly from a uniform distribution in [-1,1], from a normal distribution, or
-    they are generated deterministically all equals to 1 if distribution is 'fixed'.
+    Generates an M x N matrix to be used as sparse kernel. For each row only C elements are non-zero (i.e.,
+    each input dimension is projected only to C neurons). The non-zero elements are generated randomly from a uniform
+    distribution in [-1,1], from a standard normal distribution scaled to a variance equal to 1/C,
+    or they are generated deterministically all equals to 1 if distribution is 'fixed'.
+    In this case, the signs can be generated from different sources.
+    They are generated based on the digits of pi, e, a logistic map or randomly.
+    In particular, for pi and e, the signs are thresholded at 4.5.
+    For the logistic map, the signs are generated based on the value of the logistic map and a threshold of 0.5.
 
     :param M: Number of rows.
     :param N: Number of columns.
     :param C: Number of nonzero elements.
-    :param distribution: Initialisation strategy.
-    It can be 'uniform', 'normal' or 'fixed'.
-    In the case of normal, the N(0,1) is used, scaled to a variance equal to 1/C.
+    :param distribution: Initialisation strategy. It can be 'uniform', 'normal' or 'fixed'.
     :param scaling: Scaling factor for fixed and uniform distribution.
     :param signs_from: The source of the signs for the fixed distribution.
 
@@ -54,19 +55,19 @@ def sparse_tensor_init(M: int, N: int, C: int = 1, distribution: str = 'uniform'
 
         if signs_from is None or signs_from == 'random':
             # Generate random signs
-            signs = np.random.choice([-1, 1], size=M * C)
+            signs = torch.randint(0, 2, (M * C,)).mul(2).sub(1)
         elif signs_from == 'pi':
             # Set precision to get enough decimal digits
             mp.dps = M * C + 2
 
             digits = str(mp.pi)[2:2 + M * C]
-            signs = np.array([1 if int(d) > 4.5 else -1 for d in digits])
+            signs = torch.tensor([1 if int(d) > 4.5 else -1 for d in digits], dtype=torch.float32)
         elif signs_from == 'e':
             # Set precision to get enough decimal digits
             mp.dps = M * C + 2
 
             digits = str(mp.e)[2:2 + M * C]
-            signs = np.array([1 if int(d) > 4.5 else -1 for d in digits])
+            signs = torch.tensor([1 if int(d) > 4.5 else -1 for d in digits], dtype=torch.float32)
         elif signs_from == 'logistic':
             # Logistic map initialization
             x = 0.33
@@ -74,13 +75,13 @@ def sparse_tensor_init(M: int, N: int, C: int = 1, distribution: str = 'uniform'
             for i in range(M * C):
                 x = 4 * x * (1 - x)
                 signs[i] = 1 if x > 0.5 else -1
-            signs = np.array(signs)
+            signs = torch.tensor(signs, dtype=torch.float32)
 
-        values *= torch.tensor(signs, dtype=torch.float32)
+        values *= signs
     elif distribution == 'uniform':
         values = (torch.rand(M * C, dtype=torch.float32) * 2 - 1) * scaling
     elif distribution == 'normal':
-        values = torch.randn(M * C, dtype=torch.float32) / np.sqrt(C)
+        values = torch.randn(M * C, dtype=torch.float32) / torch.sqrt(torch.tensor(C, dtype=torch.float32))
 
     indices = torch.zeros((M * C, 2), dtype=torch.long)
     for i in range(M):
@@ -88,7 +89,7 @@ def sparse_tensor_init(M: int, N: int, C: int = 1, distribution: str = 'uniform'
         indices[i * C:(i + 1) * C, 0] = i
         indices[i * C:(i + 1) * C, 1] = idx
 
-    return torch.sparse_coo_tensor(indices.T, values, (M, N), dtype=torch.float32).to_dense()
+    return torch.sparse_coo_tensor(indices.T, values, (M, N), dtype=torch.float32, requires_grad=False).to_dense()
 
 
 def spectral_norm_scaling(W: torch.FloatTensor, rho_desired: float) -> torch.FloatTensor:
@@ -121,7 +122,8 @@ def fast_spectral_rescaling(W: torch.FloatTensor, rho_desired: float) -> torch.F
     """
 
     units = W.shape[0]
-    value = (rho_desired / np.sqrt(units)) * (6 / np.sqrt(12))
+    value = ((rho_desired / torch.sqrt(torch.tensor(units, dtype=torch.float32)))
+             * (6 / torch.sqrt(torch.tensor(12, dtype=torch.float32))))
     return W * value
 
 
@@ -129,13 +131,12 @@ def circular_tensor_init(M: int, distribution: str = 'uniform', scaling: float =
     """
     Generates an M x M matrix with ring topology.
     Each neuron receives input only from one neuron and propagates its activation only to one other neuron.
-    The non-zero elements are generated randomly from a uniform distribution in [-1,1], from a normal distribution or
-    are fixed to 1.
+    The non-zero elements are in positions (i+1, i) and (0, M-1).
+    The non-zero elements are generated randomly from a uniform distribution in [-1,1],
+    from a standard normal distribution or are fixed to 1.
 
     :param M: Number of hidden units
-    :param distribution: Initialisation strategies.
-    It can be 'uniform', 'normal' or 'fixed'.
-    In the case of normal, the N(0,1) is used.
+    :param distribution: Initialisation strategies. It can be 'uniform', 'normal' or 'fixed'.
     :param scaling: Scaling factor for fixed and uniform distribution.
 
     :return: M x M sparse matrix.
@@ -147,6 +148,7 @@ def circular_tensor_init(M: int, distribution: str = 'uniform', scaling: float =
         raise ValueError(f"Invalid distribution <<{distribution}>>. Only uniform, normal and fixed allowed.")
 
     dense_shape = (M, M)
+    # Generate the indices of the non-zero elements, (i+1, i) and (0, M-1)
     indices = torch.cat([torch.stack([torch.arange(1, M), torch.arange(M - 1)], dim=1), torch.tensor([[0, M - 1]])],
                         dim=0)
 
@@ -157,12 +159,13 @@ def circular_tensor_init(M: int, distribution: str = 'uniform', scaling: float =
     elif distribution == 'normal':
         values = torch.randn(M, dtype=torch.float32)
 
-    return torch.sparse_coo_tensor(indices.T, values, dense_shape, dtype=torch.float32).to_dense()
+    return torch.sparse_coo_tensor(indices.T, values, dense_shape, dtype=torch.float32, requires_grad=False).to_dense()
 
 
 def skewsymmetric(M: int, scaling: float = 1.0) -> torch.FloatTensor:
     """
-    Generate a skewsymmetric matrix.
+    Generate a skewsymmetric matrix, i.e., a matrix A such that A^T = -A.
+    The entries of the matrix are generated randomly from a uniform distribution in [-1,1].
 
     :param M: Number of hidden units.
     :param scaling: Scaling factor.
@@ -171,7 +174,7 @@ def skewsymmetric(M: int, scaling: float = 1.0) -> torch.FloatTensor:
     if M <= 0:
         raise ValueError(f"Invalid number of units <<{M}>>. Must be positive.")
 
-    W = scaling * (2 * torch.rand(M, M, dtype=torch.float32) - 1)
+    W = scaling * (2 * torch.rand(M, M, dtype=torch.float32, requires_grad=False) - 1)
     W = W - W.T
     return W.to_dense()
 
@@ -179,6 +182,7 @@ def skewsymmetric(M: int, scaling: float = 1.0) -> torch.FloatTensor:
 def legendre_tensor_init(M: int, theta: float) -> torch.FloatTensor:
     """
     Generate a dense matrix leveraging the Legendre polynomials.
+    The matrix is defined as: M_ij = -(2i + 1) / theta if i < j, else (2i + 1) / theta * (-1)^(i-j+1).
 
     :param M: Number of hidden units.
     :param theta: Scaling factor.
@@ -191,21 +195,47 @@ def legendre_tensor_init(M: int, theta: float) -> torch.FloatTensor:
                          -(2 * indices[:, 0] + 1) / theta,
                          (2 * indices[:, 0] + 1) / theta * (-1) ** (indices[:, 0] - indices[:, 1] + 1))
 
-    return torch.sparse_coo_tensor(indices.T, values, (M, M), dtype=torch.float32).to_dense()
+    return torch.sparse_coo_tensor(indices.T, values, (M, M), dtype=torch.float32, requires_grad=False).to_dense()
 
 
 def init_bias(bias: bool, non_linear_units: int, input_scaling: float, bias_scaling: float) -> torch.FloatTensor:
+    """
+    Initialize the bias tensor.
+
+    :param bias: Whether to use bias or not.
+    :param non_linear_units: The number of non-linear units (the dimension of the bias tensor).
+    :param input_scaling: The default scaling factor for the bias tensor (if bias_scaling is None).
+    :param bias_scaling: The scaling factor for the bias tensor.
+
+    :return: The bias tensor.
+    """
+
     if bias:
         bias_scaling = input_scaling if bias_scaling is None else bias_scaling
         tensor = (2 * torch.rand(non_linear_units, dtype=torch.float32) - 1) * bias_scaling
         tensor = tensor.to_dense()
     else:
         tensor = torch.zeros(non_linear_units, dtype=torch.float32).to_dense()
+
     return torch.nn.Parameter(tensor, requires_grad=False)
 
 
 def rescale_kernel(W: torch.FloatTensor, spectral_radius: float, leaky_rate: float, effective_rescaling: bool,
                    distribution: str, non_linear_connectivity: int, non_linear_units: int) -> torch.FloatTensor:
+    """
+    Rescale the kernel matrix W to have the desired spectral radius.
+
+    :param W: The kernel matrix.
+    :param spectral_radius: The desired spectral radius.
+    :param leaky_rate: The leaky rate of the kernel.
+    :param effective_rescaling: Whether to rescale the kernel considering the leaky rate.
+    :param distribution: The distribution from which the kernel was sampled.
+    :param non_linear_connectivity: The connectivity of the kernel.
+    :param non_linear_units: The number of units in the kernel.
+
+    :return: The rescaled kernel matrix.
+    """
+
     if effective_rescaling and leaky_rate != 1:
         I = eye_init(non_linear_units)
         W = (I * (1 - leaky_rate)) + W * leaky_rate
@@ -215,6 +245,7 @@ def rescale_kernel(W: torch.FloatTensor, spectral_radius: float, leaky_rate: flo
         return spectral_radius * W
     if distribution == 'uniform' and non_linear_connectivity == non_linear_units and non_linear_units != 1:
         return fast_spectral_rescaling(W, spectral_radius)
+
     return spectral_norm_scaling(W, spectral_radius)
 
 
@@ -222,6 +253,22 @@ def init_non_linear_kernel(non_linear_units: int, non_linear_connectivity: int, 
                            spectral_radius: float, leaky_rate: float, effective_rescaling: bool,
                            circular_non_linear_kernel: bool, euler: bool, gamma: float, non_linear_scaling: float) \
         -> torch.FloatTensor:
+    """
+    Initialize the non-linear kernel.
+
+    :param non_linear_units: The number of units in the non-linear kernel.
+    :param non_linear_connectivity: The connectivity of the non-linear kernel.
+    :param distribution: The distribution from which the non-linear kernel has to be sampled.
+    :param spectral_radius: The desired spectral radius of the non-linear kernel.
+    :param leaky_rate: The leaky rate of the non-linear kernel.
+    :param effective_rescaling: Whether to rescale the non-linear kernel considering the leaky rate.
+    :param circular_non_linear_kernel: Whether to use a non-linear kernel with ring topology.
+    :param euler: Whether to use the Euler method to generate the non-linear kernel.
+    :param gamma: Scaling factor for the skew-symmetric matrix.
+    :param non_linear_scaling: Scaling factor for the non-linear kernel.
+
+    :return: The non-linear kernel matrix.
+    """
 
     if euler:
         W = skewsymmetric(non_linear_units, non_linear_scaling)
@@ -240,12 +287,36 @@ def init_non_linear_kernel(non_linear_units: int, non_linear_connectivity: int, 
 
 def init_input_kernel(input_units: int, units: int, input_connectivity: int, input_scaling: float, distribution: str,
                       signs_from: str | None = None) -> torch.FloatTensor:
+    """
+    Initialize the input kernel.
+
+    :param input_units: The number of input dimensions.
+    :param units: The number of units in a kernel.
+    :param input_connectivity: The connectivity of the input kernel.
+    :param input_scaling: The scaling factor for the input kernel.
+    :param distribution: The distribution from which the input kernel has to be sampled.
+    :param signs_from: The source of the signs for the fixed distribution.
+
+    :return: The input kernel matrix.
+    """
+
     kernel = sparse_tensor_init(input_units, units, C=input_connectivity, scaling=input_scaling, signs_from=signs_from,
                                 distribution=distribution)
     return torch.nn.Parameter(kernel, requires_grad=False)
 
 
 def init_memory_kernel(memory_units: int, theta: float, legendre: bool, scaling: float) -> torch.FloatTensor:
+    """
+    Initialize the memory kernel.
+
+    :param memory_units: The number of memory units.
+    :param theta: The scaling factor for a Legendre matrix.
+    :param legendre: Whether to use a Legendre matrix or a circular matrix.
+    :param scaling: The scaling factor for the circular matrix.
+
+    :return: The memory kernel matrix.
+    """
+
     if legendre:
         M = legendre_tensor_init(memory_units, theta)
         return torch.nn.Parameter(torch.matrix_exp(M), requires_grad=False)

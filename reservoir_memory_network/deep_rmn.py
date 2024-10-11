@@ -1,7 +1,5 @@
 import torch
 import numpy as np
-from scipy.spatial.distance import num_obs_y
-from torch.xpu import device
 
 from tqdm import tqdm
 
@@ -13,20 +11,7 @@ from .rmn import MemoryCell, NonLinearCell
 
 class DeepReservoirMemoryNetwork(torch.nn.Module):
     """
-    A deep reservoir memory network for time series prediction tasks.
-
-    Attributes:
-        _just_memory (bool): Flag indicating whether to use only memory states.
-        _scaler (StandardScaler): Scaler for standardizing the states.
-        task (str): Task type ('classification' or 'regression').
-        number_of_layers (int): Number of reservoir layers.
-        total_non_linear_units (int): Total number of non-linear units.
-        _concatenate_non_linear (bool): Flag indicating whether to concatenate non-linear states.
-        total_memory_units (int): Total number of memory units.
-        _concatenate_memory (bool): Flag indicating whether to concatenate memory states.
-        batch_first (bool): Flag indicating whether the batch dimension is first.
-        reservoir (torch.nn.ModuleList): List of reservoir layers.
-        readout (RidgeClassifier or Ridge): Readout layer for the network.
+    Deep Reservoir Memory Network.
     """
 
     def __init__(self,
@@ -74,50 +59,51 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                  just_memory: bool = False,
                  ) -> None:
         """
-        Initializes the DeepReservoirMemoryNetwork.
+        Initializes the Deep Reservoir Memory Network.
 
-        Args:
-            task (str): Task type ('classification' or 'regression').
-            input_units (int): Number of input units.
-            total_non_linear_units (int): Total number of non-linear units.
-            total_memory_units (int): Total number of memory units.
-            number_of_layers (int): Number of reservoir layers.
-            initial_transients (int): Number of initial transient states to discard.
-            memory_scaling (float): Scaling factor for memory weights.
-            non_linear_scaling (float): Scaling factor for non-linear weights.
-            input_memory_scaling (float): Scaling factor for input memory weights.
-            input_non_linear_scaling (float): Scaling factor for input non-linear weights.
-            memory_non_linear_scaling (float): Scaling factor for memory non-linear weights.
-            inter_non_linear_scaling (float): Scaling factor for inter non-linear weights.
-            inter_memory_scaling (float): Scaling factor for inter memory weights.
-            spectral_radius (float): Spectral radius of the recurrent weight matrix.
-            leaky_rate (float): Leaky integration rate.
-            input_memory_connectivity (int): Number of connections in the input memory weight matrix.
-            input_non_linear_connectivity (int): Number of connections in the input non-linear weight matrix.
-            non_linear_connectivity (int): Number of connections in the non-linear weight matrix.
-            memory_non_linear_connectivity (int): Number of connections in the memory non-linear weight matrix.
-            inter_non_linear_connectivity (int): Number of connections in the inter non-linear weight matrix.
-            inter_memory_connectivity (int): Number of connections in the inter memory weight matrix.
-            bias (bool): Whether to use a bias term.
-            bias_scaling (float, optional): Scaling factor for the bias term.
-            distribution (str): Distribution type for weight initialization.
-            signs_from (str, optional): Source for signs of weights.
-            fixed_input_kernel (bool): Whether to use a fixed input kernel.
-            non_linearity (str): Non-linearity function to use.
-            effective_rescaling (bool): Whether to use effective rescaling.
-            concatenate_non_linear (bool): Whether to concatenate non-linear states.
-            concatenate_memory (bool): Whether to concatenate memory states.
-            circular_non_linear_kernel (bool): Whether to use a circular non-linear kernel.
-            euler (bool): Whether to use Euler integration.
-            epsilon (float): Euler integration step size.
-            gamma (float): Scaling factor for recurrent weights.
-            alpha (float): Regularization strength for the readout layer.
-            max_iter (int): Maximum number of iterations for the readout layer.
-            tolerance (float): Tolerance for the readout layer.
-            legendre (bool): Whether to use Legendre polynomials.
-            theta (float): Scaling factor for Legendre polynomials.
-            just_memory (bool): Whether to use only memory states.
+        :param task: Task to perform. Either 'classification' or 'regression'.
+        :param input_units: Number of input units.
+        :param total_non_linear_units: Total number of non-linear units.
+        :param total_memory_units: Total number of memory units.
+        :param number_of_non_linear_layers: Number of non-linear layers.
+        :param number_of_memory_layers: Number of memory layers.
+        :param initial_transients: Number of initial transients.
+        :param memory_scaling: Scaling factor for the memory kernel.
+        :param non_linear_scaling: Non-linear scaling factor.
+        :param input_memory_scaling: Input-memory scaling factor.
+        :param input_non_linear_scaling: Input-non-linear scaling factor.
+        :param memory_non_linear_scaling: Memory-non-linear scaling factor.
+        :param inter_non_linear_scaling: Inter-non-linear scaling factor.
+        :param inter_memory_scaling: Inter-memory scaling factor.
+        :param spectral_radius: Desired spectral radius.
+        :param leaky_rate: Leaky integration rate.
+        :param input_memory_connectivity: Input-memory connectivity.
+        :param input_non_linear_connectivity: Input-non-linear connectivity.
+        :param non_linear_connectivity: Non-linear connectivity.
+        :param memory_non_linear_connectivity: Memory-non-linear connectivity.
+        :param inter_non_linear_connectivity: Inter-non-linear connectivity.
+        :param inter_memory_connectivity: Inter-memory connectivity.
+        :param bias: Whether to use bias.
+        :param bias_scaling: Bias scaling factor.
+        :param distribution: Distribution of the weights.
+        :param signs_from: Source of the signs of the weights.
+        :param fixed_input_kernel: Whether to use a fixed input kernel.
+        :param non_linearity: Non-linearity function.
+        :param effective_rescaling: Whether to rescale the recurrent weights according to the leaky rate.
+        :param concatenate_non_linear: Whether to concatenate the non-linear layers.
+        :param concatenate_memory: Whether to concatenate the memory layers.
+        :param circular_non_linear_kernel: Whether to use a circular non-linear kernel.
+        :param euler: Whether to use the Euler method.
+        :param epsilon: Euler integration step size.
+        :param gamma: Diffusion coefficient for the Euler recurrent kernel.
+        :param alpha: Regularization strength.
+        :param max_iter: Maximum number of iterations for the readout layer.
+        :param tolerance: Tolerance for the readout layer.
+        :param legendre: Whether to use Legendre memory kernel.
+        :param theta: Legendre memory kernel parameter.
+        :param just_memory: Whether to use only the memory layers.
         """
+
         super().__init__()
         self._total_non_linear_units = total_non_linear_units
         self._total_memory_units = total_memory_units
@@ -240,9 +226,8 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         """
         Resets the internal state of the reservoir.
 
-        Args:
-            batch_size (int): Batch size.
-            device (torch.device): Device to perform computations on.
+        :param batch_size: The batch size.
+        :param device: The device to perform computations on.
         """
 
         for memory_layer in self.memory_layers:
@@ -254,11 +239,20 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
     @torch.no_grad()
     def _forward_core(self, x: torch.Tensor) \
             -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+        """
+        Core forward method for the Deep Reservoir Memory Network.
+
+        :param x: Input tensor.
+
+        :return: The non-linear states, the non-linear state at the last time step,
+        the memory states, and the memory state at the last time step.
+        """
 
         seq_len = x.shape[1]
 
         memory_states = []
 
+        # iterate over the memory layers and compute the states
         last_memory_state = x
         for idx, memory_layer in enumerate(self.memory_layers):
             layer_states = torch.empty((x.shape[0], seq_len, memory_layer.memory_kernel.shape[0]),
@@ -270,6 +264,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             memory_states.append(layer_states)
             last_memory_state = layer_states
 
+        # iterate over the non-linear layers and compute the states
         if not self._just_memory:
             non_linear_states = []
             last_non_linear_state = x
@@ -302,6 +297,15 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) \
             -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+        """
+        Forward method for the Deep Reservoir Memory Network.
+        This method is not meant to be used without the fit method.
+
+        :param x: The input tensor.
+
+        :return: The non-linear states, the non-linear state at the last time step,
+        the memory states, and the memory state at the last time step.
+        """
 
         if not self._trained:
             raise ValueError('The model has not been trained yet. Use the fit method to train the model.')
@@ -310,6 +314,14 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
 
     def _forward(self, x: torch.Tensor) \
             -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+        """
+        Forward method for the Deep Reservoir Memory Network.
+
+        :param x: The input tensor.
+
+        :return: The non-linear states, the non-linear state at the last time step,
+        the memory states, and the memory state at the last time step.
+        """
 
         return self._forward_core(x)
 
@@ -317,14 +329,13 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
             use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
         """
-        Fits the readout layer of the deep reservoir memory network.
+        Fits the deep reservoir memory network on the given data.
 
-        Args:
-            data (torch.utils.data.DataLoader): DataLoader for the training data.
-            device (torch.device): Device to perform computations on.
-            standardize (bool): Whether to standardize the states.
-            use_last_state (bool): Whether to use the last state for fitting.
-            disable_progress_bar (bool): Whether to disable the progress bar.
+        :param data: The DataLoader for the training data.
+        :param device: The device to perform computations on.
+        :param standardize: Whether to standardize the states before fitting the readout layer.
+        :param use_last_state: Whether to use the state at the last time step for fitting the readout layer.
+        :param disable_progress_bar: Whether to disable the progress bar.
         """
 
         batch_size = data.batch_size
@@ -333,6 +344,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         num_batches = len(data)
         state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
 
+        # pre-allocate the states and the target values
         states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
@@ -367,15 +379,13 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         """
         Scores the deep reservoir memory network on the given data.
 
-        Args:
-            data (torch.utils.data.DataLoader): DataLoader for the test data.
-            device (torch.device): Device to perform computations on.
-            standardize (bool): Whether to standardize the states.
-            use_last_state (bool): Whether to use the last state for scoring.
-            disable_progress_bar (bool): Whether to disable the progress bar.
+        :param data: The DataLoader for the input data.
+        :param device: The device to perform computations on.
+        :param standardize: Whether to standardize the states before scoring.
+        :param use_last_state: Whether to use the state at the last time step for scoring.
+        :param disable_progress_bar: Whether to disable the progress bar.
 
-        Returns:
-            float: Score of the network.
+        :return: The score of the deep reservoir memory network.
         """
 
         if not self._trained:
@@ -416,17 +426,15 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
                 use_last_state: bool = True, disable_progress_bar: bool = False) -> np.ndarray:
         """
-        Predicts the output for the given data.
+        Predicts the target values of the deep reservoir memory network on the given data.
 
-        Args:
-            data (torch.utils.data.DataLoader): DataLoader for the input data.
-            device (torch.device): Device to perform computations on.
-            standardize (bool): Whether to standardize the states.
-            use_last_state (bool): Whether to use the last state for prediction.
-            disable_progress_bar (bool): Whether to disable the progress bar.
+        :param data: The DataLoader for the input data.
+        :param device: The device to perform computations on.
+        :param standardize: Whether to standardize the states before predicting.
+        :param use_last_state: Whether to use the state at the last time step for predicting.
+        :param disable_progress_bar: Whether to disable the progress bar.
 
-        Returns:
-            np.ndarray: Predicted output.
+        :return: The predicted target values.
         """
 
         if not self._trained:
