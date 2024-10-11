@@ -300,7 +300,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         else:
             return None, None, memory_states[:, self._initial_transients:, :], memory_states[:, -1, :]
 
-    @torch.no_grad()
     def forward(self, x: torch.Tensor) \
             -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
 
@@ -309,7 +308,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
 
         return self._forward_core(x)
 
-    @torch.no_grad()
     def _forward(self, x: torch.Tensor) \
             -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
 

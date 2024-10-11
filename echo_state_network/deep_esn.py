@@ -144,7 +144,6 @@ class DeepEchoStateNetwork(torch.nn.Module):
 
         return states, states[:, -1, :]
 
-    @torch.no_grad()
     def forward(self, x: torch.Tensor) -> tuple:
 
         if not self._trained:
@@ -152,7 +151,6 @@ class DeepEchoStateNetwork(torch.nn.Module):
 
         return self._forward_core(x)
 
-    @torch.no_grad()
     def _forward(self, x: torch.Tensor) -> tuple:
 
         return self._forward_core(x)

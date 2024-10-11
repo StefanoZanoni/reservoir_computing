@@ -159,7 +159,6 @@ class NonLinearCell(torch.nn.Module):
 
         return self._non_linear_state
 
-    @torch.no_grad()
     def forward(self, xt: torch.Tensor, memory_state: torch.FloatTensor) -> torch.FloatTensor:
         return self._forward_function(xt, memory_state)
 

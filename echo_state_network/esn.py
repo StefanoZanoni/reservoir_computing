@@ -167,7 +167,6 @@ class ReservoirCell(torch.nn.Module):
 
         return self._state
 
-    @torch.no_grad()
     def forward(self, xt: torch.Tensor) -> torch.FloatTensor:
         """
         Forward pass through the reservoir cell.
