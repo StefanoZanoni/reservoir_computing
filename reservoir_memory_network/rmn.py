@@ -133,8 +133,8 @@ class MemoryCell(torch.nn.Module):
         """
 
         # m(t) = Vm * m(t-1) + Vx * x(t)
-        torch.addmm(torch.matmul(xt, self.input_memory_kernel),
-                    self._memory_state, self.memory_kernel, out=self._memory_state)
+        self._memory_state = torch.addmm(torch.matmul(xt, self.input_memory_kernel),
+                                         self._memory_state, self.memory_kernel)
 
         return self._memory_state
 
