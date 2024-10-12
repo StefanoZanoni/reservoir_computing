@@ -337,10 +337,6 @@ class RMNCell(torch.nn.Module):
 
         super().__init__()
 
-        validate_params(just_memory, input_units, memory_units, non_linear_units, leaky_rate,
-                        memory_non_linear_connectivity, input_non_linear_connectivity, non_linear_connectivity,
-                        input_memory_connectivity, distribution, non_linearity, signs_from)
-
         self.memory = MemoryCell(input_units, memory_units, input_memory_scaling=input_memory_scaling,
                                  memory_scaling=memory_scaling, input_memory_connectivity=input_memory_connectivity,
                                  theta=theta, legendre=legendre, distribution=distribution, signs_from=signs_from,
@@ -399,7 +395,7 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                  bias_scaling: float = None,
                  distribution: str = 'uniform',
                  signs_from: str | None = None,
-                 fixed_input_kernels: bool = False,
+                 fixed_input_kernel: bool = False,
                  non_linearity: str = 'tanh',
                  effective_rescaling: bool = True,
                  circular_non_linear_kernel: bool = False,
@@ -411,6 +407,7 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                  just_memory: bool = False) -> None:
 
         super().__init__()
+        self._just_memory = just_memory
         self._initial_transients = initial_transients
         self.net = RMNCell(input_units, non_linear_units, memory_units, memory_scaling=memory_scaling,
                            non_linear_scaling=non_linear_scaling, input_memory_scaling=input_memory_scaling,
@@ -421,10 +418,13 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                            non_linear_connectivity=non_linear_connectivity,
                            memory_non_linear_connectivity=memory_non_linear_connectivity, bias=bias,
                            bias_scaling=bias_scaling, distribution=distribution, signs_from=signs_from,
-                           fixed_input_kernel=fixed_input_kernels, non_linearity=non_linearity,
+                           fixed_input_kernel=fixed_input_kernel, non_linearity=non_linearity,
                            effective_rescaling=effective_rescaling,
                            circular_non_linear_kernel=circular_non_linear_kernel, euler=euler, epsilon=epsilon,
                            gamma=gamma, legendre=legendre, theta=theta, just_memory=just_memory)
+
+    def reset_state(self, batch_size: int, device: torch.device) -> None:
+        self.net.reset_state(batch_size, device)
 
     @torch.no_grad()
     def forward(self, x: torch.Tensor) -> tuple[torch.FloatTensor | None, torch.FloatTensor]:
@@ -432,7 +432,7 @@ class ReservoirMemoryNetwork(torch.nn.Module):
         is_dim_2 = x.dim() == 2
         seq_len = x.shape[1]
 
-        if not self.just_memory:
+        if not self._just_memory:
             non_linear_states = torch.empty((x.shape[0], seq_len, self.net.non_linear.non_linear_kernel.shape[0]),
                                             dtype=torch.float32, device=x.device, requires_grad=False)
         memory_states = torch.empty((x.shape[0], seq_len, self.net.memory.memory_kernel.shape[0]), dtype=torch.float32,
@@ -440,7 +440,7 @@ class ReservoirMemoryNetwork(torch.nn.Module):
 
         for t in range(seq_len):
             xt = x[:, t].unsqueeze(1) if is_dim_2 else x[:, t]
-            if not self.just_memory:
+            if not self._just_memory:
                 non_linear_state, memory_state = self.net(xt)
                 non_linear_states[:, t, :].copy_(non_linear_state)
                 memory_states[:, t, :].copy_(memory_state)
@@ -448,4 +448,4 @@ class ReservoirMemoryNetwork(torch.nn.Module):
                 memory_states[:, t].copy_(self.net(xt)[1])
 
         return (non_linear_states[:, self._initial_transients:, :], memory_states[:, self._initial_transients:, :]) \
-            if not self.just_memory else (None, memory_states[:, self._initial_transients:, :])
+            if not self._just_memory else (None, memory_states[:, self._initial_transients:, :])
