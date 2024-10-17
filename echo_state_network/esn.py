@@ -30,7 +30,7 @@ def validate_params(input_units: int, recurrent_units: int, leaky_rate: float, r
         raise ValueError("Leaky rate must be in (0, 1].")
     if not (1 <= recurrent_connectivity <= recurrent_units):
         raise ValueError("Recurrent connectivity must be in [1, recurrent_units].")
-    if not (1 <= input_connectivity <= recurrent_connectivity):
+    if not (1 <= input_connectivity <= recurrent_units):
         raise ValueError("Input connectivity must be in [1, recurrent_units].")
     if distribution not in ['uniform', 'normal']:
         raise ValueError("Distribution must be 'uniform', or 'normal'.")
