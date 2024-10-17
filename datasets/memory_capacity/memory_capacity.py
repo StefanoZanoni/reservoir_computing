@@ -21,11 +21,11 @@ class MemoryCapacity(Dataset):
         """
 
         if training:
-            sequence_length = 10000 + k
+            sequence_length = 5000 + k
         else:
-            sequence_length = 4000 + k
+            sequence_length = 1000 + k
 
-        time_series = 2 * torch.rand(sequence_length) - 1
+        time_series = 1.6 * torch.rand(sequence_length) - 0.8
         self.data = time_series[k:]
         self.target = time_series[:-k]
 
