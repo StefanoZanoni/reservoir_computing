@@ -3,9 +3,9 @@ import numpy as np
 
 from tqdm import tqdm
 
-from .esn import EchoStateNetwork
+from .esn import ReservoirCell
 
-from sklearn.linear_model import RidgeClassifier, Ridge
+from sklearn.linear_model import RidgeClassifier, Ridge, LinearRegression
 from sklearn.preprocessing import StandardScaler
 
 
@@ -100,7 +100,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         # creates a list of reservoirs
         # the first:
         reservoir_layers = [
-            EchoStateNetwork(
+            ReservoirCell(
                 input_units,
                 self._recurrent_units + total_units % number_of_layers,
                 input_scaling=input_scaling,
@@ -132,7 +132,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
             last_h_size = self._recurrent_units
         for _ in range(number_of_layers - 1):
             reservoir_layers.append(
-                EchoStateNetwork(
+                ReservoirCell(
                     last_h_size,
                     self._recurrent_units,
                     input_scaling=inter_scaling,
@@ -156,10 +156,14 @@ class DeepEchoStateNetwork(torch.nn.Module):
             )
             last_h_size = self._recurrent_units
         self.reservoir = torch.nn.ModuleList(reservoir_layers)
+
         if task == 'classification':
             self.readout = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
         elif task == 'regression':
-            self.readout = Ridge(alpha=alpha, max_iter=max_iter, tol=tolerance)
+            if alpha > 0:
+                self.readout = Ridge(alpha=alpha, max_iter=max_iter, tol=tolerance)
+            else:
+                self.readout = LinearRegression()
         self._trained = False
 
     def _reset_state(self, batch_size: int, device: torch.device) -> None:
@@ -171,7 +175,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         """
 
         for layer in self.reservoir:
-            layer.net.reset_state(batch_size, device)
+            layer.reset_state(batch_size, device)
 
     @torch.no_grad()
     def _forward_core(self, x: torch.Tensor) -> tuple[torch.FloatTensor, torch.FloatTensor]:
@@ -183,17 +187,26 @@ class DeepEchoStateNetwork(torch.nn.Module):
         :return: The state of the deep reservoir for all the time steps and the state for the last time step.
         """
 
-        layer_input = x
-        states = []
+        non_linear_states = []
+        last_non_linear_state = x
+        seq_len = x.shape[1]
 
-        for idx, reservoir_layer in enumerate(self.reservoir):
-            state = reservoir_layer(layer_input)
-            states.append(state[:, self._initial_transients:, :])
-            layer_input = state
+        for idx, non_linear_layer in enumerate(self.reservoir):
+            layer_states = torch.empty((x.shape[0], seq_len, non_linear_layer.recurrent_kernel.shape[0]),
+                                       device=x.device, requires_grad=False, dtype=torch.float32)
+            is_dim2 = last_non_linear_state.dim() == 2
+            for t in range(seq_len):
+                xt = last_non_linear_state[:, t].unsqueeze(1) if is_dim2 else last_non_linear_state[:, t]
+                layer_states[:, t, :].copy_(non_linear_layer(xt))
+            non_linear_states.append(layer_states)
+            last_non_linear_state = layer_states
 
-        states = torch.cat(states, dim=2) if self._concatenate else states[-1]
+        if self._concatenate:
+            non_linear_states = torch.cat(non_linear_states, dim=-1)
+        else:
+            non_linear_states = non_linear_states[-1]
 
-        return states, states[:, -1, :]
+        return non_linear_states[:, self._initial_transients:, :], non_linear_states[:, -1, :]
 
     def forward(self, x: torch.Tensor) -> tuple:
         """

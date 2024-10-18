@@ -134,7 +134,8 @@ class ReservoirCell(torch.nn.Module):
         """
 
         # x(t) = (1 - α) * x(t-1) + α * f(W_in * u(t) + W * x(t-1) + b)
-        self._state.mul_(self._one_minus_leaky_rate).add_(
+        past_state = self._state * self._one_minus_leaky_rate
+        self._state = past_state.add_(
             self._non_linear_function(
                 torch.addmm(self.bias, self._state, self.recurrent_kernel)
                 .addmm_(xt, self.input_kernel)
@@ -155,7 +156,7 @@ class ReservoirCell(torch.nn.Module):
         """
 
         # x(t) = x(t-1) + ε * f(W_in * u(t) + (W - γ * I) * x(t-1) + b)
-        self._state.add_(
+        self._state += (
             self._non_linear_function(
                 torch.addmm(self.bias, self._state, self.recurrent_kernel)
                 .addmm_(xt, self.input_kernel)
@@ -186,105 +187,3 @@ class ReservoirCell(torch.nn.Module):
 
         self._state = torch.zeros((batch_size, self.recurrent_units), dtype=torch.float32,
                                   requires_grad=False, device=device)
-
-
-class EchoStateNetwork(torch.nn.Module):
-    """
-    An Echo State Network (ESN) for time series prediction/classification tasks.
-    """
-
-    def __init__(self,
-                 input_units: int,
-                 recurrent_units: int,
-                 *,
-                 initial_transients: int = 0,
-                 input_scaling: float = 1.0,
-                 recurrent_scaling: float = 1.0,
-                 spectral_radius: float = 0.9,
-                 leaky_rate: float = 0.5,
-                 input_connectivity: int = 1,
-                 recurrent_connectivity: int = 1,
-                 bias: bool = True,
-                 bias_scaling: float = None,
-                 distribution: str = 'uniform',
-                 signs_from: str | None = None,
-                 fixed_input_kernel: bool = False,
-                 non_linearity: str = 'tanh',
-                 effective_rescaling: bool = True,
-                 circular_recurrent_kernel: bool = False,
-                 euler: bool = False,
-                 epsilon: float = 1e-3,
-                 gamma: float = 1e-3,
-                 ) -> None:
-        """
-        Initializes the EchoStateNetwork.
-
-        :param task: Task type ('classification' or 'regression').
-        :param input_units: Number of input units.
-        :param recurrent_units: Number of recurrent units.
-        :param initial_transients: Number of initial transient states to discard.
-        :param input_scaling: Scaling factor for input weights.
-        :param recurrent_scaling: Scaling factor for recurrent weights.
-        :param spectral_radius: Spectral radius of the recurrent weight matrix.
-        :param leaky_rate: Leaky integration rate.
-        :param input_connectivity: Number of connections in the input weight matrix.
-        :param recurrent_connectivity: Number of connections in the recurrent weight matrix.
-        :param bias: Whether to use a bias term.
-        :param bias_scaling: Scaling factor for the bias term.
-        :param distribution: Distribution type for weight initialization.
-        :param signs_from: Source for signs of weights.
-        :param fixed_input_kernel: Whether to use a fixed input kernel.
-        :param non_linearity: Non-linearity function to use.
-        :param effective_rescaling: Whether to use effective rescaling.
-        :param circular_recurrent_kernel: Whether to use a circular recurrent kernel.
-        :param euler: Whether to use Euler integration.
-        :param epsilon: Euler integration step size.
-        :param gamma: Diffusion coefficient for the Euler recurrent kernel.
-        :param alpha: Regularization strength for the readout layer.
-        :param max_iter: Maximum number of iterations for the readout layer.
-        :param tolerance: Tolerance for the readout layer.
-        """
-
-        super().__init__()
-        self._initial_transients = initial_transients
-        self.net = ReservoirCell(input_units,
-                                 recurrent_units,
-                                 input_scaling=input_scaling,
-                                 spectral_radius=spectral_radius,
-                                 leaky_rate=leaky_rate,
-                                 input_connectivity=input_connectivity,
-                                 recurrent_connectivity=recurrent_connectivity,
-                                 bias=bias,
-                                 distribution=distribution,
-                                 signs_from=signs_from,
-                                 fixed_input_kernel=fixed_input_kernel,
-                                 non_linearity=non_linearity,
-                                 effective_rescaling=effective_rescaling,
-                                 bias_scaling=bias_scaling,
-                                 circular_recurrent_kernel=circular_recurrent_kernel,
-                                 euler=euler,
-                                 epsilon=epsilon,
-                                 gamma=gamma,
-                                 recurrent_scaling=recurrent_scaling)
-
-    @torch.no_grad()
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass through the Echo State Network.
-
-        :param x: Input tensor.
-
-        :return : States tensor after passing through the network.
-        """
-
-        seq_len = x.shape[1]
-        states = torch.empty((x.shape[0], seq_len, self.net.recurrent_units), dtype=torch.float32,
-                             requires_grad=False, device=x.device)
-
-        is_dim_2 = x.dim() == 2
-
-        for t in range(seq_len):
-            xt = x[:, t].unsqueeze(1) if is_dim_2 else x[:, t]
-            states[:, t, :].copy_(self.net(xt))
-
-        return states[:, self._initial_transients:, :]
