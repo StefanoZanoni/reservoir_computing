@@ -21,7 +21,7 @@ class MemoryCapacity(Dataset):
         """
 
         if training:
-            sequence_length = 5000 + k
+            sequence_length = 4000 + k
         else:
             sequence_length = 1000 + k
 
