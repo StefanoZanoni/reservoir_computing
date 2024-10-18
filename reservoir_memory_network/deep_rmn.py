@@ -219,7 +219,10 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         if task == 'classification':
             self.readout = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
         elif task == 'regression':
-            self.readout = Ridge(alpha=alpha, max_iter=max_iter, tol=tolerance)
+            if alpha > 0:
+                self.readout = Ridge(alpha=alpha, max_iter=max_iter, tol=tolerance)
+            else:
+                self.readout = LinearRegression()
         self._trained = False
 
     def _reset_state(self, batch_size: int, device: torch.device) -> None:
