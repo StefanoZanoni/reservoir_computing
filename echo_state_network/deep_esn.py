@@ -104,7 +104,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         reservoir_layers = [
             ReservoirCell(
                 input_units,
-                self._recurrent_units + total_units % number_of_layers,
+                self._recurrent_units + total_units % number_of_layers if concatenate else self._recurrent_units,
                 input_scaling=input_scaling,
                 spectral_radius=spectral_radius,
                 leaky_rate=leaky_rate,
@@ -128,7 +128,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         # all the others:
         # last_h_size may be different for the first layer
         # because of the remainder if concatenate_non_linear=True
-        if total_units != self._recurrent_units:
+        if concatenate:
             last_h_size = self._recurrent_units + total_units % number_of_layers
         else:
             last_h_size = self._recurrent_units
