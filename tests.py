@@ -105,6 +105,8 @@ if __name__ == '__main__':
     parser.add_argument('--just_memory', action='store_true', help='Whether to use just the memory or not')
     parser.add_argument('--input_to_all_non_linear', action='store_true',
                         help='Whether to pass the input to all non linear layers or not')
+    parser.add_argument('--input_to_all_memory', action='store_true',
+                        help='Whether to pass the input to all memory layers or not')
 
     # connectivity
     parser.add_argument('--input_memory_connectivity', type=int, default=1, help='Input memory connectivity')
@@ -190,6 +192,7 @@ if __name__ == '__main__':
     non_linearity = args.non_linearity
     circular_non_linear = args.circular_non_linear
     input_to_all_non_linear = args.input_to_all_non_linear
+    input_to_all_memory = args.input_to_all_memory
 
     alpha = args.alpha
     max_iter = args.max_iter
@@ -325,6 +328,8 @@ if __name__ == '__main__':
                            'number_of_memory_layers': number_of_memory_layers,
                            'concatenate_non_linear': concatenate_non_linear,
                            'concatenate_memory': concatenate_memory,
+                           'input_to_all_non_linear': input_to_all_non_linear,
+                           'input_to_all_memory': input_to_all_memory,
 
                            'input_units': input_units,
                            'non_linear_units': non_linear_units,
@@ -396,7 +401,9 @@ if __name__ == '__main__':
                                            concatenate_memory=concatenate_memory,
                                            circular_non_linear_kernel=circular_non_linear, euler=euler, epsilon=epsilon,
                                            gamma=gamma, alpha=alpha, max_iter=max_iter, tolerance=tolerance,
-                                           legendre=legendre_memory, theta=theta, just_memory=just_memory).to(device)
+                                           legendre=legendre_memory, theta=theta, just_memory=just_memory,
+                                           input_to_all_non_linear=input_to_all_non_linear,
+                                           input_to_all_memory=input_to_all_memory).to(device)
 
     # choose a task
     if dataset_name == 'sequential_mnist':
