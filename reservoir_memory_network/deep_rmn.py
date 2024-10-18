@@ -297,7 +297,11 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                     if concatenate_state_input:
                         xt = x[:, t].unsqueeze(1) if x_is_dim2 else x[:, t]
                         last_state_t = torch.cat([last_state_t, xt], dim=-1)
-                    layer_states[:, t, :].copy_(non_linear_layer(last_state_t, last_memory_state[:, t, :]))
+                    # just the first non-linear layer receives the last memory state (default deep architecture)
+                    if idx == 0:
+                        layer_states[:, t, :].copy_(non_linear_layer(last_state_t, last_memory_state[:, t, :]))
+                    else:
+                        layer_states[:, t, :].copy_(non_linear_layer(last_state_t))
                 non_linear_states.append(layer_states)
                 last_non_linear_state = layer_states
 
