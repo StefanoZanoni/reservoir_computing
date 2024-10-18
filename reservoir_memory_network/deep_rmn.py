@@ -57,6 +57,8 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                  legendre: bool = False,
                  theta: float = 1.0,
                  just_memory: bool = False,
+                 input_to_all_non_linear: bool = False,
+                 input_to_all_memory: bool = False,
                  ) -> None:
         """
         Initializes the Deep Reservoir Memory Network.
@@ -105,6 +107,8 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         """
 
         super().__init__()
+        self._input_to_all_non_linear = input_to_all_non_linear
+        self._input_to_all_memory = input_to_all_memory
         self._total_non_linear_units = total_non_linear_units
         self._total_memory_units = total_memory_units
         self._initial_transients = initial_transients
@@ -133,7 +137,9 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             self._memory_units = total_memory_units
 
         memory_layers = [
-            MemoryCell(input_units, self._memory_units + total_memory_units % number_of_memory_layers,
+            MemoryCell(input_units,
+                       self._memory_units + total_memory_units % number_of_memory_layers
+                       if concatenate_memory else self._memory_units,
                        memory_scaling=memory_scaling,
                        input_memory_scaling=input_memory_scaling,
                        input_memory_connectivity=input_memory_connectivity,
@@ -143,13 +149,14 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                        legendre=legendre,
                        theta=theta)
         ]
-        if total_memory_units != self._memory_units:
+        if concatenate_memory:
             last_h_memory_size = self._memory_units + total_memory_units % number_of_memory_layers
         else:
             last_h_memory_size = self._memory_units
         for _ in range(number_of_memory_layers - 1):
             memory_layers.append(
-                MemoryCell(last_h_memory_size, self._memory_units,
+                MemoryCell(last_h_memory_size + input_units if input_to_all_memory else last_h_memory_size,
+                           self._memory_units,
                            memory_scaling=memory_scaling,
                            input_memory_scaling=inter_memory_scaling,
                            input_memory_connectivity=inter_memory_connectivity,
@@ -159,12 +166,14 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                            legendre=legendre,
                            theta=theta)
             )
+            last_h_memory_size = memory_layers[-1].memory_kernel.shape[0]
         self.memory_layers = torch.nn.ModuleList(memory_layers)
 
         if not just_memory:
             non_linear_layers = [
                 NonLinearCell(input_units,
-                              self._non_linear_units + total_non_linear_units % number_of_non_linear_layers,
+                              self._non_linear_units + total_non_linear_units % number_of_non_linear_layers
+                              if concatenate_non_linear else self._non_linear_units,
                               last_h_memory_size,
                               non_linear_scaling=non_linear_scaling,
                               input_non_linear_scaling=input_non_linear_scaling,
@@ -186,14 +195,15 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                               epsilon=epsilon,
                               gamma=gamma)
             ]
-
-            if total_non_linear_units != self._non_linear_units:
+            if concatenate_non_linear:
                 last_h_non_linear_size = self._non_linear_units + total_non_linear_units % number_of_non_linear_layers
             else:
                 last_h_non_linear_size = self._non_linear_units
             for _ in range(number_of_non_linear_layers - 1):
                 non_linear_layers.append(
-                    NonLinearCell(last_h_non_linear_size, self._non_linear_units, last_h_memory_size,
+                    NonLinearCell(last_h_non_linear_size + input_units if input_to_all_non_linear
+                                  else last_h_non_linear_size,
+                                  self._non_linear_units, last_h_memory_size,
                                   non_linear_scaling=non_linear_scaling,
                                   input_non_linear_scaling=inter_non_linear_scaling,
                                   memory_non_linear_scaling=memory_non_linear_scaling,
@@ -214,6 +224,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                                   epsilon=epsilon,
                                   gamma=gamma)
                 )
+                last_h_non_linear_size = non_linear_layers[-1].non_linear_kernel.shape[0]
             self.non_linear_layers = torch.nn.ModuleList(non_linear_layers)
 
         if task == 'classification':
@@ -257,13 +268,18 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
 
         # iterate over the memory layers and compute the states
         last_memory_state = x
+        x_is_dim2 = x.dim() == 2
         for idx, memory_layer in enumerate(self.memory_layers):
             layer_states = torch.empty((x.shape[0], seq_len, memory_layer.memory_kernel.shape[0]),
                                        device=x.device, requires_grad=False, dtype=torch.float32)
             is_dim2 = last_memory_state.dim() == 2
+            concatenate_state_input = self._input_to_all_memory and idx > 0
             for t in range(seq_len):
-                xt = last_memory_state[:, t].unsqueeze(1) if is_dim2 else last_memory_state[:, t]
-                layer_states[:, t, :].copy_(memory_layer(xt))
+                last_state_t = last_memory_state[:, t].unsqueeze(1) if is_dim2 else last_memory_state[:, t]
+                if concatenate_state_input:
+                    xt = x[:, t].unsqueeze(1) if x_is_dim2 else x[:, t]
+                    last_state_t = torch.cat([last_state_t, xt], dim=-1)
+                layer_states[:, t, :].copy_(memory_layer(last_state_t))
             memory_states.append(layer_states)
             last_memory_state = layer_states
 
@@ -275,9 +291,13 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                 layer_states = torch.empty((x.shape[0], seq_len, non_linear_layer.non_linear_kernel.shape[0]),
                                            device=x.device, requires_grad=False, dtype=torch.float32)
                 is_dim2 = last_non_linear_state.dim() == 2
+                concatenate_state_input = self._input_to_all_non_linear and idx > 0
                 for t in range(seq_len):
-                    xt = last_non_linear_state[:, t].unsqueeze(1) if is_dim2 else last_non_linear_state[:, t]
-                    layer_states[:, t, :].copy_(non_linear_layer(xt, last_memory_state[:, t, :]))
+                    last_state_t = last_non_linear_state[:, t].unsqueeze(1) if is_dim2 else last_non_linear_state[:, t]
+                    if concatenate_state_input:
+                        xt = x[:, t].unsqueeze(1) if x_is_dim2 else x[:, t]
+                        last_state_t = torch.cat([last_state_t, xt], dim=-1)
+                    layer_states[:, t, :].copy_(non_linear_layer(last_state_t, last_memory_state[:, t, :]))
                 non_linear_states.append(layer_states)
                 last_non_linear_state = layer_states
 
@@ -358,7 +378,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         try:
             for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
                 x, y = x.to(device), y.to(device)
-                states[idx:idx + batch_size] = self._forward(x)[3 if self._just_memory else 1].cpu().numpy()\
+                states[idx:idx + batch_size] = self._forward(x)[3 if self._just_memory else 1].cpu().numpy() \
                     if use_last_state else self._forward(x)[2 if self._just_memory else 0].cpu().numpy()
                 ys[idx:idx + batch_size] = y.cpu().numpy()
                 idx += batch_size
@@ -411,7 +431,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         idx = 0
         for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
             x, y = x.to(device), y.to(device)
-            states[idx:idx + batch_size] = self._forward(x)[3 if self._just_memory else 1].cpu().numpy()\
+            states[idx:idx + batch_size] = self._forward(x)[3 if self._just_memory else 1].cpu().numpy() \
                 if use_last_state else self._forward(x)[2 if self._just_memory else 0].cpu().numpy()
             ys[idx:idx + batch_size] = y.cpu().numpy()
             idx += batch_size
@@ -459,7 +479,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         idx = 0
         for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
             x = x.to(device)
-            states[idx:idx + batch_size] = self._forward(x)[3 if self._just_memory else 1].cpu().numpy()\
+            states[idx:idx + batch_size] = self._forward(x)[3 if self._just_memory else 1].cpu().numpy() \
                 if use_last_state else self._forward(x)[2 if self._just_memory else 0].cpu().numpy()
             idx += batch_size
 

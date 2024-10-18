@@ -231,10 +231,12 @@ class NonLinearCell(torch.nn.Module):
                                                           distribution)
         self.bias = init_bias(bias, non_linear_units, input_non_linear_scaling, bias_scaling)
 
-        self._non_linear_function: Callable = torch.tanh if non_linearity == 'tanh' else lambda x: x
+        self._non_linear_function: Callable[[torch.FloatTensor], torch.FloatTensor] =\
+            torch.tanh if non_linearity == 'tanh' else lambda x: x
 
         self._non_linear_state = None
-        self._forward_function: Callable = self._forward_euler if euler else self._forward_leaky_integrator
+        self._forward_function: Callable[[torch.Tensor, torch.FloatTensor], torch.FloatTensor] = (
+            self._forward_euler) if euler else self._forward_leaky_integrator
 
     @torch.no_grad()
     def _forward_leaky_integrator(self, xt: torch.Tensor, memory_state: torch.FloatTensor) -> torch.FloatTensor:
@@ -247,7 +249,8 @@ class NonLinearCell(torch.nn.Module):
         """
 
         # h(t) = (1 - a) * h(t-1) + a * f(Wx * h(t-1) + Wm * m(t) + Wx * x(t) + b)
-        self._non_linear_state.mul_(self._one_minus_leaky_rate).add_(
+        past_state = self._non_linear_state * self._one_minus_leaky_rate
+        self._non_linear_state = past_state.add_(
             self._non_linear_function(
                 torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
                 .addmm_(xt, self.input_non_linear_kernel)
