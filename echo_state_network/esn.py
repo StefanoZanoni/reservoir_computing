@@ -122,7 +122,7 @@ class ReservoirCell(torch.nn.Module):
         self._non_linear_function: Callable[[torch.FloatTensor], torch.FloatTensor] = \
             torch.tanh if non_linearity == 'tanh' else lambda x: x
         self._state = None
-        self._forward_function: Callable[[torch.Tensor, torch.FloatTensor], torch.FloatTensor] = (
+        self._forward_function: Callable[[torch.Tensor], torch.FloatTensor] = (
             self._forward_euler) if euler else self._forward_leaky_integrator
 
     @torch.no_grad()
