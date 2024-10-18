@@ -44,6 +44,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
                  alpha: float = 1.0,
                  max_iter: int = 1000,
                  tolerance: float = 1e-4,
+                 input_to_all: bool = False,
                  ) -> None:
         """
         Initializes the Deep Echo State Network model.
@@ -79,6 +80,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         """
 
         super().__init__()
+        self._input_to_all = input_to_all
         self._initial_transients = initial_transients
         self._scaler = None
         self._concatenate = concatenate
@@ -133,7 +135,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         for _ in range(number_of_layers - 1):
             reservoir_layers.append(
                 ReservoirCell(
-                    last_h_size,
+                    last_h_size + input_units if input_to_all else last_h_size,
                     self._recurrent_units,
                     input_scaling=inter_scaling,
                     spectral_radius=spectral_radius,
@@ -190,14 +192,19 @@ class DeepEchoStateNetwork(torch.nn.Module):
         non_linear_states = []
         last_non_linear_state = x
         seq_len = x.shape[1]
+        x_is_dim2 = x.dim() == 2
 
         for idx, non_linear_layer in enumerate(self.reservoir):
             layer_states = torch.empty((x.shape[0], seq_len, non_linear_layer.recurrent_kernel.shape[0]),
                                        device=x.device, requires_grad=False, dtype=torch.float32)
             is_dim2 = last_non_linear_state.dim() == 2
+            concatenate_state_input = self._input_to_all and idx > 0
             for t in range(seq_len):
-                xt = last_non_linear_state[:, t].unsqueeze(1) if is_dim2 else last_non_linear_state[:, t]
-                layer_states[:, t, :].copy_(non_linear_layer(xt))
+                last_state_t = last_non_linear_state[:, t].unsqueeze(1) if is_dim2 else last_non_linear_state[:, t]
+                if concatenate_state_input:
+                    xt = x[:, t].unsqueeze(1) if x_is_dim2 else x[:, t]
+                    last_state_t = torch.cat([last_state_t, xt], dim=-1)
+                layer_states[:, t, :].copy_(non_linear_layer(last_state_t))
             non_linear_states.append(layer_states)
             last_non_linear_state = layer_states
 

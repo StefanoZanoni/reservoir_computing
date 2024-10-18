@@ -119,9 +119,11 @@ class ReservoirCell(torch.nn.Module):
         self.bias = init_bias(bias, recurrent_units, input_scaling, bias_scaling)
 
         self._epsilon = epsilon
-        self._non_linear_function: Callable = torch.tanh if non_linearity == 'tanh' else lambda x: x
+        self._non_linear_function: Callable[[torch.FloatTensor], torch.FloatTensor] = \
+            torch.tanh if non_linearity == 'tanh' else lambda x: x
         self._state = None
-        self._forward_function: Callable = self._forward_euler if euler else self._forward_leaky_integrator
+        self._forward_function: Callable[[torch.Tensor, torch.FloatTensor], torch.FloatTensor] = (
+            self._forward_euler) if euler else self._forward_leaky_integrator
 
     @torch.no_grad()
     def _forward_leaky_integrator(self, xt: torch.Tensor) -> torch.FloatTensor:

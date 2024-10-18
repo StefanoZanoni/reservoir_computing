@@ -103,6 +103,8 @@ if __name__ == '__main__':
     parser.add_argument('--use_last_state', action='store_true', help='Whether to use just the last state or not')
     parser.add_argument('--seed', type=int, default=None, help='Seed for the random number generator')
     parser.add_argument('--just_memory', action='store_true', help='Whether to use just the memory or not')
+    parser.add_argument('--input_to_all_non_linear', action='store_true',
+                        help='Whether to pass the input to all non linear layers or not')
 
     # connectivity
     parser.add_argument('--input_memory_connectivity', type=int, default=1, help='Input memory connectivity')
@@ -187,6 +189,7 @@ if __name__ == '__main__':
     fixed_input_kernel = args.fixed_input_kernels
     non_linearity = args.non_linearity
     circular_non_linear = args.circular_non_linear
+    input_to_all_non_linear = args.input_to_all_non_linear
 
     alpha = args.alpha
     max_iter = args.max_iter
@@ -238,6 +241,7 @@ if __name__ == '__main__':
 
                            'number_of_non_linear_layers': number_of_non_linear_layers,
                            'concatenate_non_linear': concatenate_non_linear,
+                           'input_to_all': input_to_all_non_linear,
 
                            'input_units': input_units,
                            'non_linear_units': non_linear_units,
@@ -309,6 +313,7 @@ if __name__ == '__main__':
                                      max_iter=max_iter,
                                      tolerance=tolerance,
                                      initial_transients=initial_transients,
+                                     input_to_all=input_to_all_non_linear,
                                      ).to(device)
     elif model_name == 'rmn':
         hyperparameters = {'validation_percentage': validation_percentage,
