@@ -436,11 +436,23 @@ if __name__ == '__main__':
                                                       drop_last=True)
     elif dataset_name == 'memory_capacity':
         if model_name == 'esn':
-            max_delay = non_linear_units * 2
+            if concatenate_non_linear:
+                max_delay = non_linear_units * 2
+            else:
+                max_delay = non_linear_units * number_of_non_linear_layers * 2
         elif model_name == 'rmn' and not just_memory:
-            max_delay = non_linear_units * 2
+            if concatenate_non_linear and not concatenate_memory:
+                max_delay = (memory_units * number_of_memory_layers + non_linear_units) * 2
+            elif concatenate_memory and not concatenate_non_linear:
+                max_delay = (memory_units + non_linear_units * number_of_non_linear_layers) * 2
+            else:
+                max_delay = ((memory_units * number_of_memory_layers + non_linear_units * number_of_non_linear_layers)
+                             * 2)
         else:
-            max_delay = memory_units * 2
+            if concatenate_memory:
+                max_delay = memory_units * 2
+            else:
+                max_delay = memory_units * number_of_layers * 2
 
         mcs_validation = []
         mcs_test = []
