@@ -7,21 +7,16 @@ import numpy as np
 class SequentialMNIST(Dataset):
     """
     A PyTorch Dataset class for the Sequential MNIST dataset.
-
-    Attributes:
-        data (torch.Tensor): The input data for the model.
-        targets (torch.Tensor): The target labels for the model.
     """
 
     def __init__(self, training: bool = True, normalize: bool = False, permute: bool = False, seed: int = None):
         """
         Initializes the SequentialMNIST dataset.
 
-        Args:
-            training (bool): Flag indicating whether the dataset is for training or validation/testing.
-            normalize (bool): Flag indicating whether to normalize the data.
-            permute (bool): Flag indicating whether to permute the data.
-            seed (int, optional): Seed for the random permutation.
+        :param training: Flag indicating whether the dataset is for training or validation/testing.
+        :param normalize: Flag indicating whether to normalize the data.
+        :param permute: Flag indicating whether to permute the data.
+        :param seed: Seed for the random permutation.
         """
 
         transform_list = [transforms.ToTensor(), transforms.Lambda(lambda x: x / 255.0)]
@@ -34,7 +29,7 @@ class SequentialMNIST(Dataset):
                                    download=True,
                                    transform=transform)
         self.data.data = self.data.data.view(-1, 28 * 28).float()
-        self.targets = self.data.targets
+        self.target = self.data.targets.unsqueeze(1)
         self.data = self.data.data
 
         if permute:
@@ -42,8 +37,6 @@ class SequentialMNIST(Dataset):
                 np.random.seed(seed)
             permutation = np.random.permutation(28 * 28)
             self.data = self.data[:, permutation]
-
-        np.random.seed(None)
 
     def __len__(self):
         """
@@ -66,4 +59,4 @@ class SequentialMNIST(Dataset):
             tuple: A tuple containing the data and target tensors.
         """
 
-        return self.data[idx], self.targets[idx]
+        return self.data[idx], self.target[idx]

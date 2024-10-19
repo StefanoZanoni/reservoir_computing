@@ -26,8 +26,9 @@ class MemoryCapacity(Dataset):
             sequence_length = 1000 + k
 
         time_series = 1.6 * torch.rand(sequence_length) - 0.8
-        self.data = time_series[k:]
-        self.target = time_series[:-k]
+        self.data = time_series[k:].unsqueeze(0)
+        self.target = time_series[:-k].unsqueeze(0)
+        pass
 
     def __len__(self):
         """
@@ -50,4 +51,4 @@ class MemoryCapacity(Dataset):
             tuple: A tuple containing the data and target tensors.
         """
 
-        return self.data, self.target
+        return self.data[idx], self.target[idx]

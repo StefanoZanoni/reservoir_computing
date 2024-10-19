@@ -3,6 +3,7 @@ import json
 import random
 import csv
 import time
+from textwrap import indent
 
 import torch
 import numpy as np
@@ -235,6 +236,12 @@ if __name__ == '__main__':
     if not os.path.exists(f'./results/{model_name}/{dataset_name}'):
         os.makedirs(f'./results/{model_name}/{dataset_name}')
 
+    results_path = generate_results_path(model_name, dataset_name, number_of_non_linear_layers, non_linear_units,
+                                         memory_units, euler, legendre_memory, chebyshev_memory, just_memory)
+
+    if not os.path.exists(results_path):
+        os.makedirs(results_path)
+
     # choose model
     if model_name == 'esn':
         hyperparameters = {'validation_percentage': validation_percentage,
@@ -407,7 +414,7 @@ if __name__ == '__main__':
 
     # choose a task
     if dataset_name == 'sequential_mnist':
-        data = SequentialMNIST(training=True)
+        data = SequentialMNIST(training=True, normalize=True)
         total_size = len(data)
         val_size = int(0.2 * total_size)
         train_size = total_size - val_size
@@ -416,36 +423,41 @@ if __name__ == '__main__':
                                                           batch_size=training_batch_size,
                                                           shuffle=True,
                                                           drop_last=True)
-
-        # Training
-        model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state)
-
-        # Validation
         validation_dataloader = torch.utils.data.DataLoader(validation_dataset,
                                                             batch_size=validation_batch_size,
                                                             shuffle=True,
                                                             drop_last=True)
+
+        model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state)
         accuracy = model.score(validation_dataloader, device, standardize=True, use_last_state=use_last_state) * 100
 
+        # try to load the best configuration found so far
         try:
-            with open(f'./results/{model_name}/{dataset_name}/score.json', 'r') as f:
+            with open(f'{results_path}/validation_score.json', 'r') as f:
                 validation_score = json.load(f)
         except FileNotFoundError:
-            validation_score = {'validation_accuracy': 0.0}
+            validation_score = {'accuracy': 0.0}
 
-        if accuracy > validation_score['validation_accuracy']:
+        if accuracy > validation_score['accuracy']:
             # Save the hyperparameters and the accuracy
-            validation_score = {'validation_accuracy': accuracy}
-            with open(f'./results/{model_name}/{dataset_name}/hyperparameters.json', 'w') as f:
+            validation_score = {'accuracy': accuracy}
+            with open(f'{results_path}/hyperparameters.json', 'w') as f:
                 json.dump(hyperparameters, f, indent=4)
-            with open(f'./results/{model_name}/{dataset_name}/score.json', 'w') as f:
-                json.dump(validation_score, f)
+            with open(f'{results_path}/validation_score.json', 'w') as f:
+                json.dump(validation_score, f, indent=4)
 
         data = SequentialMNIST(training=False, normalize=True)
         testing_dataset = torch.utils.data.DataLoader(data,
                                                       batch_size=testing_batch_size,
                                                       shuffle=True,
                                                       drop_last=True)
+
+        accuracy = model.score(testing_dataset, device, standardize=True, use_last_state=use_last_state) * 100
+
+        test_score = {'accuracy': accuracy}
+        with open(f'{results_path}/test_score.json', 'w') as f:
+            json.dump(test_score, f, indent=4)
+
     elif dataset_name == 'memory_capacity':
         if model_name == 'esn':
             if concatenate_non_linear:
@@ -517,12 +529,6 @@ if __name__ == '__main__':
 
             validation_determination_coefficients.append(mc_ks_validation)
             test_determination_coefficients.append(mc_ks_test)
-
-        results_path = generate_results_path(model_name, dataset_name, number_of_non_linear_layers, non_linear_units,
-                                             memory_units, euler, legendre_memory, chebyshev_memory, just_memory)
-
-        if not os.path.exists(results_path):
-            os.makedirs(results_path)
 
         # try to load the best configuration found so far
         try:

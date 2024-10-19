@@ -371,11 +371,16 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         num_batches = len(data)
         state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
 
-        # pre-allocate the states and the target values
-        states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
+        # pre-allocate memory for the states and the targets
+        dataset = data.dataset.dataset if isinstance(data.dataset, torch.utils.data.Subset) else data.dataset
+        data_attr = getattr(dataset, 'data', None)
+        target_attr = getattr(dataset, 'target', None)
+        if data_attr is None or target_attr is None:
+            raise AttributeError('Dataset does not have the required attributes `data` and `target`.')
+        states = np.empty((num_batches * batch_size, data_attr.shape[1] - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
-        ys = np.empty((num_batches * batch_size, data.dataset.target.shape[0]), dtype=np.float32)
+        ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32)
 
         self._trained = True
         idx = 0
@@ -427,10 +432,16 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         num_batches = len(data)
         state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
 
-        states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
+        # pre-allocate memory for the states and the targets
+        dataset = data.dataset.dataset if isinstance(data.dataset, torch.utils.data.Subset) else data.dataset
+        data_attr = getattr(dataset, 'data', None)
+        target_attr = getattr(dataset, 'target', None)
+        if data_attr is None or target_attr is None:
+            raise AttributeError('Dataset does not have the required attributes `data` and `target`.')
+        states = np.empty((num_batches * batch_size, data_attr.shape[1] - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
-        ys = np.empty((num_batches * batch_size, data.dataset.target.shape[0]), dtype=np.float32)
+        ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32)
 
         idx = 0
         for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
@@ -476,7 +487,12 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         num_batches = len(data)
         state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
 
-        states = np.empty((num_batches * batch_size, data.dataset.data.shape[0] - self._initial_transients,
+        # pre-allocate memory for the states
+        dataset = data.dataset.dataset if isinstance(data.dataset, torch.utils.data.Subset) else data.dataset
+        data_attr = getattr(dataset, 'data', None)
+        if data_attr is None:
+            raise AttributeError('Dataset does not have the required attributes `data`.')
+        states = np.empty((num_batches * batch_size, data_attr.shape[1] - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
 
