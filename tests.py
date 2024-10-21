@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from echo_state_network import DeepEchoStateNetwork
 from reservoir_memory_network import DeepReservoirMemoryNetwork
-from datasets import SequentialMNIST, MemoryCapacity
+from datasets import SequentialMNIST, MemoryCapacity, MG17
 
 import warnings
 import sklearn
@@ -226,7 +226,7 @@ if __name__ == '__main__':
 
     if dataset_name == 'sequential_mnist':
         task = 'classification'
-    elif dataset_name == 'memory_capacity':
+    elif dataset_name == 'memory_capacity' or dataset_name == 'mg17':
         task = 'regression'
 
     if not os.path.exists('./results'):
@@ -562,3 +562,46 @@ if __name__ == '__main__':
             # store the test validation_score
             with open(f'{results_path}/test_score.json', 'w') as f:
                 json.dump(test_score, f, indent=4)
+
+    elif dataset_name == 'mg17':
+        training_data = MG17(training=True)
+        training_dataloader = torch.utils.data.DataLoader(training_data,
+                                                          batch_size=1,
+                                                          shuffle=False,
+                                                          drop_last=False)
+        validation_data = MG17(validation=True)
+        validation_dataloader = torch.utils.data.DataLoader(validation_data,
+                                                            batch_size=1,
+                                                            shuffle=False,
+                                                            drop_last=False)
+
+        model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state,
+                  disable_progress_bar=False)
+        validation_score = model.score(validation_dataloader, device, standardize=True, use_last_state=use_last_state,
+                                       disable_progress_bar=False)
+
+        # try to load the best configuration found so far
+        try:
+            with open(f'{results_path}/validation_score.json', 'r') as f:
+                best_validation_score = json.load(f)
+        except FileNotFoundError:
+            best_validation_score = {'score': 0.0}
+
+        if validation_score > best_validation_score['score']:
+            best_validation_score = {'score': validation_score}
+            with open(f'{results_path}/hyperparameters.json', 'w') as f:
+                json.dump(hyperparameters, f, indent=4)
+            with open(f'{results_path}/validation_score.json', 'w') as f:
+                json.dump(best_validation_score, f, indent=4)
+
+            test_data = MG17(test=True)
+            test_dataloader = torch.utils.data.DataLoader(test_data,
+                                                          batch_size=1,
+                                                          shuffle=False,
+                                                          drop_last=False)
+            test_score = model.score(test_dataloader, device, standardize=True, use_last_state=use_last_state,
+                                     disable_progress_bar=False)
+
+            best_test_score = {'score': test_score}
+            with open(f'{results_path}/test_score.json', 'w') as f:
+                json.dump(best_test_score, f, indent=4)
