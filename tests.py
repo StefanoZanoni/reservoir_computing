@@ -491,11 +491,11 @@ if __name__ == '__main__':
             for k in tqdm(range(max_delay), 'Delay', disable=False):
                 k += 1  # k starts from 1
                 training_data = MemoryCapacity(k, training=True)
-                training_data.target = training_data.target[initial_transients:]
+                training_data.target = training_data.target[:, initial_transients:]
                 validation_data = MemoryCapacity(k, training=False)
-                validation_data.target = validation_data.target[initial_transients:]
+                validation_data.target = validation_data.target[:, initial_transients:]
                 test_data = MemoryCapacity(k, training=False)
-                test_data.target = test_data.target[initial_transients:]
+                test_data.target = test_data.target[:, initial_transients:]
                 training_dataloader = torch.utils.data.DataLoader(training_data,
                                                                   batch_size=1,
                                                                   shuffle=False,

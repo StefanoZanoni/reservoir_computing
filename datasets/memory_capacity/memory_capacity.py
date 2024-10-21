@@ -28,7 +28,6 @@ class MemoryCapacity(Dataset):
         time_series = 1.6 * torch.rand(sequence_length) - 0.8
         self.data = time_series[k:].unsqueeze(0)
         self.target = time_series[:-k].unsqueeze(0)
-        pass
 
     def __len__(self):
         """
