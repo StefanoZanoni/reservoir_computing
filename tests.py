@@ -428,8 +428,10 @@ if __name__ == '__main__':
                                                             shuffle=True,
                                                             drop_last=True)
 
-        model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state)
-        accuracy = model.score(validation_dataloader, device, standardize=True, use_last_state=use_last_state) * 100
+        model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state,
+                  disable_progress_bar=False)
+        accuracy = model.score(validation_dataloader, device, standardize=True, use_last_state=use_last_state,
+                               disable_progress_bar=False) * 100
 
         # try to load the best configuration found so far
         try:
@@ -446,17 +448,18 @@ if __name__ == '__main__':
             with open(f'{results_path}/validation_score.json', 'w') as f:
                 json.dump(validation_score, f, indent=4)
 
-        data = SequentialMNIST(training=False, normalize=True)
-        testing_dataset = torch.utils.data.DataLoader(data,
-                                                      batch_size=testing_batch_size,
-                                                      shuffle=True,
-                                                      drop_last=True)
+            data = SequentialMNIST(training=False, normalize=True)
+            testing_dataset = torch.utils.data.DataLoader(data,
+                                                          batch_size=testing_batch_size,
+                                                          shuffle=True,
+                                                          drop_last=True)
 
-        accuracy = model.score(testing_dataset, device, standardize=True, use_last_state=use_last_state) * 100
+            accuracy = model.score(testing_dataset, device, standardize=True, use_last_state=use_last_state,
+                                   disable_progress_bar=False) * 100
 
-        test_score = {'accuracy': accuracy}
-        with open(f'{results_path}/test_score.json', 'w') as f:
-            json.dump(test_score, f, indent=4)
+            test_score = {'accuracy': accuracy}
+            with open(f'{results_path}/test_score.json', 'w') as f:
+                json.dump(test_score, f, indent=4)
 
     elif dataset_name == 'memory_capacity':
         if model_name == 'esn':
