@@ -3,7 +3,7 @@ import numpy as np
 
 from tqdm import tqdm
 
-from sklearn.linear_model import RidgeClassifier, Ridge
+from sklearn.linear_model import RidgeClassifier, Ridge, LinearRegression
 from sklearn.preprocessing import StandardScaler
 
 from .rmn import MemoryCell, NonLinearCell
