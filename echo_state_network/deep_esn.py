@@ -271,7 +271,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         states = np.empty((num_batches * batch_size, data_attr.shape[1] - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
-        ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32)
+        ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32, order='F')
 
         self._trained = True
         idx = 0
