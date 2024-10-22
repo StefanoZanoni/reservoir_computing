@@ -100,6 +100,7 @@ if __name__ == '__main__':
                         help='Whether to pass the input to all non linear layers or not')
     parser.add_argument('--input_to_all_memory', action='store_true',
                         help='Whether to pass the input to all memory layers or not')
+    parser.add_argument('--runs', type=int, default=1, help='Number of runs')
 
     # connectivity
     parser.add_argument('--input_memory_connectivity', type=int, default=1, help='Input memory connectivity')
@@ -203,6 +204,8 @@ if __name__ == '__main__':
     use_last_state = args.use_last_state
     seed = args.seed
     just_memory = args.just_memory
+
+    runs = args.runs
 
     if seed:
         random.seed(seed)
@@ -423,7 +426,7 @@ if __name__ == '__main__':
     # choose a task
     if dataset_name == 'sequential_mnist':
 
-        test_sequential_mnist(model, results_path, hyperparameters, validation_ratio, training_batch_size,
+        test_sequential_mnist(runs, model, results_path, hyperparameters, validation_ratio, training_batch_size,
                               validation_batch_size, testing_batch_size, use_last_state, device)
 
     elif dataset_name == 'memory_capacity':
@@ -446,8 +449,8 @@ if __name__ == '__main__':
             else:
                 max_delay = memory_units * number_of_layers * 2
 
-        test_memory_capacity(results_path, hyperparameters, model, max_delay, device, use_last_state,
+        test_memory_capacity(runs, results_path, hyperparameters, model, max_delay, device, use_last_state,
                              initial_transients)
 
     elif dataset_name == 'mg17':
-        test_mg17(model, results_path, hyperparameters, use_last_state, device, initial_transients)
+        test_mg17(runs, model, results_path, hyperparameters, use_last_state, device, initial_transients)

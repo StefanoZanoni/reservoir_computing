@@ -2,27 +2,32 @@ import json
 import numpy as np
 
 
-def save_results(results_path: str, hyperparameters: dict, validation_score: float, test_score: float, score_type: str):
+def save_results(results_path: str, hyperparameters: dict, mean_validation_score: float, std_validation_score: float,
+                 mean_test_score: float, std_test_score: float, score_type: str):
 
-    if isinstance(validation_score, np.float32):
-        validation_score = float(validation_score)
-    if isinstance(test_score, np.float32):
-        test_score = float(test_score)
+    if isinstance(mean_validation_score, np.float32):
+        mean_validation_score = float(mean_validation_score)
+    if isinstance(mean_test_score, np.float32):
+        mean_test_score = float(mean_test_score)
+    if isinstance(std_validation_score, np.float32):
+        std_validation_score = float(std_validation_score)
+    if isinstance(std_test_score, np.float32):
+        std_test_score = float(std_test_score)
 
     # try to load the best configuration found so far
     try:
         with open(f'{results_path}/validation_score.json', 'r') as f:
             best_validation_score = json.load(f)
     except FileNotFoundError:
-        best_validation_score = {score_type: 0.0}
+        best_validation_score = {'mean_' + score_type: 0.0, 'std_' + score_type: 0.0}
 
-    if validation_score > best_validation_score[score_type]:
+    if mean_validation_score > best_validation_score['mean_' + score_type]:
         # Save the best hyperparameters and score
-        best_validation_score = {score_type: validation_score}
+        best_validation_score = {'mean_' + score_type: mean_validation_score, 'std_' + score_type: std_validation_score}
         with open(f'{results_path}/hyperparameters.json', 'w') as f:
             json.dump(hyperparameters, f, indent=4)
         with open(f'{results_path}/validation_score.json', 'w') as f:
             json.dump(best_validation_score, f, indent=4)
 
         with open(f'{results_path}/test_score.json', 'w') as f:
-            json.dump({score_type: test_score}, f, indent=4)
+            json.dump({'mean_' + score_type: mean_test_score, 'std_' + score_type: std_test_score}, f, indent=4)

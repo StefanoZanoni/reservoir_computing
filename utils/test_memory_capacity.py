@@ -16,13 +16,13 @@ def determination_coefficient(y_pred: np.ndarray[np.float32], y_true: np.ndarray
     return numerator / denominator
 
 
-def test_memory_capacity(results_path, hyperparameters: dict, model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork,
+def test_memory_capacity(runs: int, results_path, hyperparameters: dict, model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork,
                          max_delay: int, device: str, use_last_state: bool, initial_transients: int) -> None:
     mcs_validation = []
     mcs_test = []
     validation_determination_coefficients = []
     test_determination_coefficients = []
-    for _ in range(1):
+    for _ in range(runs):
         mc_ks_validation = []
         mc_ks_test = []
         for k in tqdm(range(max_delay), 'Delay', disable=False):
@@ -70,7 +70,8 @@ def test_memory_capacity(results_path, hyperparameters: dict, model: DeepEchoSta
         validation_determination_coefficients.append(mc_ks_validation)
         test_determination_coefficients.append(mc_ks_test)
 
-        save_results(results_path, hyperparameters, np.mean(mcs_validation), np.mean(mcs_test), 'memory_capacity')
+        save_results(results_path, hyperparameters, np.mean(mcs_validation), np.std(mcs_validation), np.mean(mcs_test),
+                     np.std(mcs_test), 'memory_capacity')
 
         validation_determination_coefficients = np.mean(validation_determination_coefficients, axis=0)
         test_determination_coefficients = np.mean(test_determination_coefficients, axis=0)
