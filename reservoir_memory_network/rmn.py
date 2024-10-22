@@ -44,6 +44,7 @@ def validate_params_non_linear(input_units: int, non_linear_units: int, memory_u
     Validate the parameters for the non-linear cell.
 
     :param input_units: Number of input units.
+    :param memory_units: Number of memory units.
     :param non_linear_units: Number of non-linear units.
     :param leaky_rate: Leaky integrator rate.
     :param memory_non_linear_connectivity: Memory to non-linear connectivity.
@@ -272,7 +273,7 @@ class NonLinearCell(torch.nn.Module):
         """
 
         # h(t) = h(t-1) + ε * f(Wx * x(t) + Wm * m(t) + (W - γ * I) * h(t-1) + b)
-        self._non_linear_state.add_(
+        self._non_linear_state += (
             self._non_linear_function(
                 torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
                 .addmm_(xt, self.input_non_linear_kernel)
