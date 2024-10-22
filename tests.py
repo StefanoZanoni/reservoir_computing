@@ -10,13 +10,14 @@ import numpy as np
 
 from argparse import ArgumentParser
 
-from torch.utils.data import random_split
-
 from tqdm import tqdm
 
 from echo_state_network import DeepEchoStateNetwork
 from reservoir_memory_network import DeepReservoirMemoryNetwork
 from datasets import SequentialMNIST, MemoryCapacity, MG17
+from utils.test_sequential_mnist import test_sequential_mnist
+from utils.test_mg17 import test_mg17
+from utils.test_memory_capacity import test_memory_capacity
 
 import warnings
 import sklearn
@@ -44,15 +45,6 @@ def generate_results_path(model_name, dataset_name, number_of_layers, non_linear
     return base_path
 
 
-def compute_determination_coefficient(y_true, y_pred):
-    y_true = y_true.cpu().numpy()
-    y_pred = y_pred
-    y_true_mean = np.mean(y_true)
-    numerator = np.sum((y_true - y_true_mean) * (y_pred - y_true_mean)) ** 2
-    denominator = np.sum((y_true - y_true_mean) ** 2) * np.sum((y_pred - y_true_mean) ** 2)
-    return numerator / denominator
-
-
 if __name__ == '__main__':
 
     # parse arguments
@@ -64,7 +56,7 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, default='esn', help='Model to use')
 
     # dataset arguments
-    parser.add_argument('--validation_percentage', type=float, default=0.2, help='Validation percentage')
+    parser.add_argument('--validation_ratio', type=float, default=0.2, help='Validation ratio')
     parser.add_argument('--batch_training', type=int, default=1, help='Training batch size')
     parser.add_argument('--batch_validation', type=int, default=1, help='Validation batch size')
     parser.add_argument('--batch_testing', type=int, default=1, help='Testing batch size')
@@ -151,7 +143,7 @@ if __name__ == '__main__':
     dataset_name = args.dataset
     model_name = args.model
 
-    validation_percentage = args.validation_percentage
+    validation_ratio = args.validation_ratio
     training_batch_size = args.batch_validation
     validation_batch_size = args.batch_validation
     testing_batch_size = args.batch_testing
@@ -244,48 +236,54 @@ if __name__ == '__main__':
 
     # choose model
     if model_name == 'esn':
-        hyperparameters = {'validation_percentage': validation_percentage,
+        hyperparameters = {'validation_ratio': validation_ratio,
                            'training_batch_size': training_batch_size,
                            'validation_batch_size': validation_batch_size,
                            'testing_batch_size': testing_batch_size,
 
                            'number_of_non_linear_layers': number_of_non_linear_layers,
-                           'concatenate_non_linear': concatenate_non_linear,
-                           'input_to_all': input_to_all_non_linear,
 
                            'input_units': input_units,
                            'non_linear_units': non_linear_units,
 
                            'non_linear_scaling': non_linear_scaling,
                            'input_non_linear_scaling': input_non_linear_scaling,
-                           'inter_non_linear_scaling': inter_non_linear_scaling,
 
                            'input_non_linear_connectivity': input_non_linear_connectivity,
                            'non_linear_connectivity': non_linear_connectivity,
-                           'inter_non_linear_connectivity': inter_non_linear_connectivity,
 
                            'spectral_radius': spectral_radius,
                            'leaky_rate': leaky_rate,
-                           'effective_rescaling': effective_rescaling,
-
-                           'bias': bias,
-                           'bias_scaling': bias_scaling,
 
                            'distribution': distribution,
-                           'signs_from': signs_from,
-                           'fixed_input_kernel': fixed_input_kernel,
                            'non_linearity': non_linearity,
-                           'circular_non_linear': circular_non_linear,
 
                            'alpha': alpha,
                            'max_iter': max_iter,
-                           'initial_transients': initial_transients,
                            'tolerance': tolerance,
-
-                           'euler': euler,
-                           'epsilon': epsilon,
-                           'gamma': gamma,
+                           'initial_transients': initial_transients,
                            }
+        if concatenate_non_linear:
+            hyperparameters['concatenate_non_linear'] = True
+        if input_to_all_non_linear:
+            hyperparameters['input_to_all_non_linear'] = True
+        if effective_rescaling:
+            hyperparameters['effective_rescaling'] = True
+        if bias:
+            hyperparameters['bias'] = True
+            hyperparameters['bias_scaling'] = bias_scaling
+        if fixed_input_kernel:
+            hyperparameters['fixed_input_kernel'] = True
+            hyperparameters['signs_from'] = signs_from
+        if circular_non_linear:
+            hyperparameters['circular_non_linear'] = True
+        if euler:
+            hyperparameters['euler'] = True
+            hyperparameters['epsilon'] = epsilon
+            hyperparameters['gamma'] = gamma
+        if number_of_non_linear_layers > 1:
+            hyperparameters['inter_non_linear_scaling'] = inter_non_linear_scaling
+            hyperparameters['inter_non_linear_connectivity'] = inter_non_linear_connectivity
 
         model = DeepEchoStateNetwork(task,
                                      input_units,
@@ -326,17 +324,13 @@ if __name__ == '__main__':
                                      input_to_all=input_to_all_non_linear,
                                      ).to(device)
     elif model_name == 'rmn':
-        hyperparameters = {'validation_percentage': validation_percentage,
+        hyperparameters = {'validation_ratio': validation_ratio,
                            'training_batch_size': training_batch_size,
                            'validation_batch_size': validation_batch_size,
                            'testing_batch_size': testing_batch_size,
 
                            'number_of_non_linear_layers': number_of_non_linear_layers,
                            'number_of_memory_layers': number_of_memory_layers,
-                           'concatenate_non_linear': concatenate_non_linear,
-                           'concatenate_memory': concatenate_memory,
-                           'input_to_all_non_linear': input_to_all_non_linear,
-                           'input_to_all_memory': input_to_all_memory,
 
                            'input_units': input_units,
                            'non_linear_units': non_linear_units,
@@ -347,43 +341,57 @@ if __name__ == '__main__':
                            'input_memory_scaling': input_memory_scaling,
                            'input_non_linear_scaling': input_non_linear_scaling,
                            'memory_non_linear_scaling': memory_non_linear_scaling,
-                           'inter_memory_scaling': inter_memory_scaling,
-                           'inter_non_linear_scaling': inter_non_linear_scaling,
 
                            'input_memory_connectivity': input_memory_connectivity,
                            'input_non_linear_connectivity': input_non_linear_connectivity,
                            'non_linear_connectivity': non_linear_connectivity,
                            'memory_non_linear_connectivity': memory_non_linear_connectivity,
-                           'inter_memory_connectivity': inter_memory_connectivity,
-                           'inter_non_linear_connectivity': inter_non_linear_connectivity,
-
-                           'bias': bias,
-                           'bias_scaling': bias_scaling,
 
                            'spectral_radius': spectral_radius,
                            'leaky_rate': leaky_rate,
-                           'effective_rescaling': effective_rescaling,
 
                            'distribution': distribution,
-                           'signs_from': signs_from,
-                           'fixed_input_kernel': fixed_input_kernel,
                            'non_linearity': non_linearity,
-                           'circular_non_linear': circular_non_linear,
 
                            'alpha': alpha,
                            'max_iter': max_iter,
-                           'initial_transients': initial_transients,
                            'tolerance': tolerance,
-
-                           'euler': euler,
-                           'epsilon': epsilon,
-                           'gamma': gamma,
-
-                           'legendre_memory': legendre_memory,
-                           'theta': theta,
-
-                           'just_memory': just_memory
+                           'initial_transients': initial_transients,
                            }
+        if concatenate_non_linear:
+            hyperparameters['concatenate_non_linear'] = True
+        if input_to_all_non_linear:
+            hyperparameters['input_to_all_non_linear'] = True
+        if effective_rescaling:
+            hyperparameters['effective_rescaling'] = True
+        if bias:
+            hyperparameters['bias'] = True
+            hyperparameters['bias_scaling'] = bias_scaling
+        if fixed_input_kernel:
+            hyperparameters['fixed_input_kernel'] = True
+            hyperparameters['signs_from'] = signs_from
+        if circular_non_linear:
+            hyperparameters['circular_non_linear'] = True
+        if euler:
+            hyperparameters['euler'] = True
+            hyperparameters['epsilon'] = epsilon
+            hyperparameters['gamma'] = gamma
+
+        if concatenate_memory:
+            hyperparameters['concatenate_memory'] = True
+        if input_to_all_memory:
+            hyperparameters['input_to_all_memory'] = True
+        if legendre_memory:
+            hyperparameters['legendre_memory'] = True
+            hyperparameters['theta'] = theta
+        if just_memory:
+            hyperparameters['just_memory'] = True
+        if number_of_non_linear_layers > 1:
+            hyperparameters['inter_non_linear_scaling'] = inter_non_linear_scaling
+            hyperparameters['inter_non_linear_connectivity'] = inter_non_linear_connectivity
+        if number_of_memory_layers > 1:
+            hyperparameters['inter_memory_scaling'] = inter_memory_scaling
+            hyperparameters['inter_memory_connectivity'] = inter_memory_connectivity
 
         model = DeepReservoirMemoryNetwork(task, input_units, non_linear_units, memory_units,
                                            number_of_non_linear_layers=number_of_non_linear_layers,
@@ -414,52 +422,9 @@ if __name__ == '__main__':
 
     # choose a task
     if dataset_name == 'sequential_mnist':
-        data = SequentialMNIST(training=True, normalize=True)
-        total_size = len(data)
-        val_size = int(0.2 * total_size)
-        train_size = total_size - val_size
-        training_dataset, validation_dataset = random_split(data, [train_size, val_size])
-        training_dataloader = torch.utils.data.DataLoader(training_dataset,
-                                                          batch_size=training_batch_size,
-                                                          shuffle=True,
-                                                          drop_last=True)
-        validation_dataloader = torch.utils.data.DataLoader(validation_dataset,
-                                                            batch_size=validation_batch_size,
-                                                            shuffle=True,
-                                                            drop_last=True)
 
-        model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state,
-                  disable_progress_bar=False)
-        accuracy = model.score(validation_dataloader, device, standardize=True, use_last_state=use_last_state,
-                               disable_progress_bar=False) * 100
-
-        # try to load the best configuration found so far
-        try:
-            with open(f'{results_path}/validation_score.json', 'r') as f:
-                validation_score = json.load(f)
-        except FileNotFoundError:
-            validation_score = {'accuracy': 0.0}
-
-        if accuracy > validation_score['accuracy']:
-            # Save the hyperparameters and the accuracy
-            validation_score = {'accuracy': accuracy}
-            with open(f'{results_path}/hyperparameters.json', 'w') as f:
-                json.dump(hyperparameters, f, indent=4)
-            with open(f'{results_path}/validation_score.json', 'w') as f:
-                json.dump(validation_score, f, indent=4)
-
-            data = SequentialMNIST(training=False, normalize=True)
-            testing_dataset = torch.utils.data.DataLoader(data,
-                                                          batch_size=testing_batch_size,
-                                                          shuffle=True,
-                                                          drop_last=True)
-
-            accuracy = model.score(testing_dataset, device, standardize=True, use_last_state=use_last_state,
-                                   disable_progress_bar=False) * 100
-
-            test_score = {'accuracy': accuracy}
-            with open(f'{results_path}/test_score.json', 'w') as f:
-                json.dump(test_score, f, indent=4)
+        test_sequential_mnist(model, results_path, hyperparameters, validation_ratio, training_batch_size,
+                              validation_batch_size, testing_batch_size, use_last_state, device)
 
     elif dataset_name == 'memory_capacity':
         if model_name == 'esn':
@@ -481,127 +446,8 @@ if __name__ == '__main__':
             else:
                 max_delay = memory_units * number_of_layers * 2
 
-        mcs_validation = []
-        mcs_test = []
-        validation_determination_coefficients = []
-        test_determination_coefficients = []
-        for run in range(1):
-            mc_ks_validation = []
-            mc_ks_test = []
-            for k in tqdm(range(max_delay), 'Delay', disable=False):
-                k += 1  # k starts from 1
-                training_data = MemoryCapacity(k, training=True)
-                training_data.target = training_data.target[:, initial_transients:]
-                validation_data = MemoryCapacity(k, training=False)
-                validation_data.target = validation_data.target[:, initial_transients:]
-                test_data = MemoryCapacity(k, training=False)
-                test_data.target = test_data.target[:, initial_transients:]
-                training_dataloader = torch.utils.data.DataLoader(training_data,
-                                                                  batch_size=1,
-                                                                  shuffle=False,
-                                                                  drop_last=False)
-                validation_dataloader = torch.utils.data.DataLoader(validation_data,
-                                                                    batch_size=1,
-                                                                    shuffle=False,
-                                                                    drop_last=False)
-                test_dataloader = torch.utils.data.DataLoader(test_data,
-                                                              batch_size=1,
-                                                              shuffle=False,
-                                                              drop_last=False)
-
-                # training
-                model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state,
-                          disable_progress_bar=True)
-
-                # validation
-                predictions = (
-                    model.predict(validation_dataloader, device, standardize=True,
-                                  use_last_state=use_last_state, disable_progress_bar=True)).reshape(-1)
-                mc_k = compute_determination_coefficient(validation_data.target, predictions)
-                mc_ks_validation.append(mc_k)
-
-                # test
-                predictions = (
-                    model.predict(test_dataloader, device, standardize=True, use_last_state=use_last_state,
-                                  disable_progress_bar=True)).reshape(-1)
-                mc_k = compute_determination_coefficient(test_data.target, predictions)
-                mc_ks_test.append(mc_k)
-
-            mcs_validation.append(float(sum(mc_ks_validation)))
-            mcs_test.append(float(sum(mc_ks_test)))
-
-            validation_determination_coefficients.append(mc_ks_validation)
-            test_determination_coefficients.append(mc_ks_test)
-
-        # try to load the best configuration found so far
-        try:
-            with open(f'{results_path}/validation_score.json', 'r') as f:
-                validation_score = json.load(f)
-        except FileNotFoundError:
-            validation_score = {'mean_memory_capacity': 0.0, 'std_memory_capacity': 0.0}
-
-        # store the best configuration found so far
-        if validation_score['mean_memory_capacity'] < np.mean(mcs_validation):
-            validation_score = {'mean_memory_capacity': np.mean(mcs_validation),
-                                'std_memory_capacity': np.std(mcs_validation)}
-            with open(f'{results_path}/hyperparameters.json', 'w') as f:
-                json.dump(hyperparameters, f, indent=4)
-            with open(f'{results_path}/validation_score.json', 'w') as f:
-                json.dump(validation_score, f, indent=4)
-
-            validation_determination_coefficients = np.mean(validation_determination_coefficients, axis=0)
-            test_determination_coefficients = np.mean(test_determination_coefficients, axis=0)
-            with open(f'{results_path}/determination_coefficients.csv', 'w', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(['Validation Determination Coefficients', 'Test Determination Coefficients'])
-                for val, test in zip(validation_determination_coefficients, test_determination_coefficients):
-                    writer.writerow([val, test])
-
-            test_score = {'mean_memory_capacity': np.mean(mcs_test), 'std_memory_capacity': np.std(mcs_test)}
-
-            # store the test validation_score
-            with open(f'{results_path}/test_score.json', 'w') as f:
-                json.dump(test_score, f, indent=4)
+        test_memory_capacity(results_path, hyperparameters, model, max_delay, device, use_last_state,
+                             initial_transients)
 
     elif dataset_name == 'mg17':
-        training_data = MG17(training=True)
-        training_dataloader = torch.utils.data.DataLoader(training_data,
-                                                          batch_size=1,
-                                                          shuffle=False,
-                                                          drop_last=False)
-        validation_data = MG17(validation=True)
-        validation_dataloader = torch.utils.data.DataLoader(validation_data,
-                                                            batch_size=1,
-                                                            shuffle=False,
-                                                            drop_last=False)
-
-        model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state,
-                  disable_progress_bar=False)
-        validation_score = model.score(validation_dataloader, device, standardize=True, use_last_state=use_last_state,
-                                       disable_progress_bar=False)
-
-        # try to load the best configuration found so far
-        try:
-            with open(f'{results_path}/validation_score.json', 'r') as f:
-                best_validation_score = json.load(f)
-        except FileNotFoundError:
-            best_validation_score = {'score': 0.0}
-
-        if validation_score > best_validation_score['score']:
-            best_validation_score = {'score': validation_score}
-            with open(f'{results_path}/hyperparameters.json', 'w') as f:
-                json.dump(hyperparameters, f, indent=4)
-            with open(f'{results_path}/validation_score.json', 'w') as f:
-                json.dump(best_validation_score, f, indent=4)
-
-            test_data = MG17(test=True)
-            test_dataloader = torch.utils.data.DataLoader(test_data,
-                                                          batch_size=1,
-                                                          shuffle=False,
-                                                          drop_last=False)
-            test_score = model.score(test_dataloader, device, standardize=True, use_last_state=use_last_state,
-                                     disable_progress_bar=False)
-
-            best_test_score = {'score': test_score}
-            with open(f'{results_path}/test_score.json', 'w') as f:
-                json.dump(best_test_score, f, indent=4)
+        test_mg17(model, results_path, hyperparameters, use_last_state, device, initial_transients)
