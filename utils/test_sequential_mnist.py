@@ -53,4 +53,4 @@ def test_sequential_mnist(runs: int, model: DeepEchoStateNetwork | DeepReservoir
         test_scores.append(test_score)
 
     save_results(results_path, hyperparameters, np.mean(validation_score), np.std(validation_scores),
-                 np.mean(test_score), np.std(test_scores), 'accuracy')
+                 np.mean(test_score), np.std(test_scores), 'accuracy', 'greater')

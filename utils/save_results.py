@@ -3,7 +3,7 @@ import numpy as np
 
 
 def save_results(results_path: str, hyperparameters: dict, mean_validation_score: float, std_validation_score: float,
-                 mean_test_score: float, std_test_score: float, score_type: str):
+                 mean_test_score: float, std_test_score: float, score_type: str, relation: str):
 
     if isinstance(mean_validation_score, np.float32):
         mean_validation_score = float(mean_validation_score)
@@ -21,7 +21,11 @@ def save_results(results_path: str, hyperparameters: dict, mean_validation_score
     except FileNotFoundError:
         best_validation_score = {'mean_' + score_type: 0.0, 'std_' + score_type: 0.0}
 
-    if mean_validation_score > best_validation_score['mean_' + score_type]:
+    if relation == 'greater':
+        update_condition = mean_validation_score > best_validation_score['mean_' + score_type]
+    elif relation == 'less':
+        update_condition = mean_validation_score < best_validation_score['mean_' + score_type]
+    if update_condition:
         # Save the best hyperparameters and score
         best_validation_score = {'mean_' + score_type: mean_validation_score, 'std_' + score_type: std_validation_score}
         with open(f'{results_path}/hyperparameters.json', 'w') as f:

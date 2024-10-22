@@ -52,4 +52,4 @@ def test_mg17(runs: int, model: DeepEchoStateNetwork | DeepReservoirMemoryNetwor
         test_scores.append(test_score)
 
     save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
-                 np.mean(test_scores), np.std(test_scores), 'mse')
+                 np.mean(test_scores), np.std(test_scores), 'mse', 'less')
