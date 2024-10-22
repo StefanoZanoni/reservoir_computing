@@ -8,6 +8,8 @@ from .esn import ReservoirCell
 from sklearn.linear_model import RidgeClassifier, Ridge, LinearRegression
 from sklearn.preprocessing import StandardScaler
 
+from typing import Callable
+
 
 class DeepEchoStateNetwork(torch.nn.Module):
     """
@@ -284,7 +286,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
 
             if not use_last_state:
                 states = np.concatenate(states, axis=0)
-                ys = np.repeat(ys, states.shape[0] // ys.shape[0], axis=0) if len(ys.shape) == 1 else ys.T
+                ys = np.repeat(ys, states.shape[0] // ys.shape[0], axis=0) if ys.shape[1] == 1 else ys.T
 
             if standardize:
                 self._scaler = StandardScaler().fit(states)
@@ -296,18 +298,20 @@ class DeepEchoStateNetwork(torch.nn.Module):
             raise e
 
     @torch.no_grad()
-    def score(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-              use_last_state: bool = True, disable_progress_bar: bool = False) -> float:
+    def score(self, data: torch.utils.data.DataLoader, score_function: Callable[[np.ndarray, np.ndarray], float],
+              device: torch.device, standardize: bool = False, use_last_state: bool = True,
+              disable_progress_bar: bool = False) -> float:
         """
-        Scores the model on the data.
+        Scores the deep echo state network on the given data.
 
-        :param data: The data to score the model on.
-        :param device: The device to use.
-        :param standardize: Whether to standardize the data before scoring the readout.
-        :param use_last_state: Whether to use just the state at the last time step as input to the readout.
+        :param data: The DataLoader for the input data.
+        :param score_function: The scoring function.
+        :param device: The device to perform computations on.
+        :param standardize: Whether to standardize the states before scoring.
+        :param use_last_state: Whether to use the state at the last time step for scoring.
         :param disable_progress_bar: Whether to disable the progress bar.
 
-        :return: The score of the model on the data.
+        :return: The score of the deep ESN.
         """
 
         if not self._trained:
@@ -316,40 +320,15 @@ class DeepEchoStateNetwork(torch.nn.Module):
             if self._scaler is None:
                 raise ValueError('Standardization is enabled but the model has not been fitted yet.')
 
-        batch_size = data.batch_size
-        self._reset_state(batch_size, device)
-
-        num_batches = len(data)
-        state_size = self._total_units
-
-        # pre-allocate memory for the states and the targets
-        dataset = data.dataset.dataset if isinstance(data.dataset, torch.utils.data.Subset) else data.dataset
-        data_attr = getattr(dataset, 'data', None)
-        target_attr = getattr(dataset, 'target', None)
-        if data_attr is None or target_attr is None:
-            raise AttributeError('Dataset does not have the required attributes `data` and `target`.')
-        states = np.empty((num_batches * batch_size, data_attr.shape[1] - self._initial_transients,
-                           state_size), dtype=np.float32) if not use_last_state \
-            else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
-        ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32)
-
-        idx = 0
-        # iterate over the data
-        for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
-            x, y = x.to(device), y.to(device)
-            states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \
-                else self._forward(x)[0].cpu().numpy()
-            ys[idx:idx + batch_size] = y.cpu().numpy()
-            idx += batch_size
-
-        if not use_last_state:
-            states = np.concatenate(states, axis=0)
-            ys = np.repeat(ys, states.shape[0] // ys.shape[0], axis=0) if len(ys.shape) == 1 else ys.T
-
-        if standardize:
-            states = self._scaler.transform(states)
-
-        return self.readout.score(states, ys)
+        if isinstance(data.dataset, torch.utils.data.Subset):
+            dataset = data.dataset.dataset
+            indices = data.dataset.indices
+            target = getattr(dataset, 'target', None)[indices][:len(data) * data.batch_size]
+        else:
+            dataset = data.dataset
+            target = getattr(dataset, 'target', None)[:len(data) * data.batch_size]
+        return score_function(self.predict(data, device, standardize, use_last_state, disable_progress_bar),
+                              target.cpu().numpy())
 
     @torch.no_grad()
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
@@ -389,7 +368,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
 
         idx = 0
         # iterate over the data
-        for x, _ in tqdm(data, desc='Fitting', disable=disable_progress_bar):
+        for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
             x = x.to(device)
             states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \
                 else self._forward(x)[0].cpu().numpy()
