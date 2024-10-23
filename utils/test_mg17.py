@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-import numpy as np
 
 from datasets import MG17
 from echo_state_network import DeepEchoStateNetwork
