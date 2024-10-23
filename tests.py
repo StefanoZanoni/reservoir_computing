@@ -447,7 +447,7 @@ if __name__ == '__main__':
             if concatenate_memory:
                 max_delay = memory_units * 2
             else:
-                max_delay = memory_units * number_of_layers * 2
+                max_delay = memory_units * number_of_memory_layers * 2
 
         test_memory_capacity(runs, results_path, hyperparameters, model, max_delay, device, use_last_state,
                              initial_transients)

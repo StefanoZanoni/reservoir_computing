@@ -16,7 +16,8 @@ def determination_coefficient(y_pred: np.ndarray[np.float32], y_true: np.ndarray
     return numerator / denominator
 
 
-def test_memory_capacity(runs: int, results_path, hyperparameters: dict, model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork,
+def test_memory_capacity(runs: int, results_path, hyperparameters: dict,
+                         model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork,
                          max_delay: int, device: str, use_last_state: bool, initial_transients: int) -> None:
     mcs_validation = []
     mcs_test = []
@@ -70,13 +71,13 @@ def test_memory_capacity(runs: int, results_path, hyperparameters: dict, model: 
         validation_determination_coefficients.append(mc_ks_validation)
         test_determination_coefficients.append(mc_ks_test)
 
-        save_results(results_path, hyperparameters, np.mean(mcs_validation), np.std(mcs_validation), np.mean(mcs_test),
-                     np.std(mcs_test), 'memory_capacity', 'greater')
+    save_results(results_path, hyperparameters, np.mean(mcs_validation), np.std(mcs_validation), np.mean(mcs_test),
+                 np.std(mcs_test), 'memory_capacity', 'greater')
 
-        validation_determination_coefficients = np.mean(validation_determination_coefficients, axis=0)
-        test_determination_coefficients = np.mean(test_determination_coefficients, axis=0)
-        with open(f'{results_path}/determination_coefficients.csv', 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow(['Validation Determination Coefficients', 'Test Determination Coefficients'])
-            for val, test in zip(validation_determination_coefficients, test_determination_coefficients):
-                writer.writerow([val, test])
+    validation_determination_coefficients = np.mean(validation_determination_coefficients, axis=0)
+    test_determination_coefficients = np.mean(test_determination_coefficients, axis=0)
+    with open(f'{results_path}/determination_coefficients.csv', 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Validation Determination Coefficients', 'Test Determination Coefficients'])
+        for val, test in zip(validation_determination_coefficients, test_determination_coefficients):
+            writer.writerow([val, test])
