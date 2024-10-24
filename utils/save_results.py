@@ -19,7 +19,10 @@ def save_results(results_path: str, hyperparameters: dict, mean_validation_score
         with open(f'{results_path}/validation_score.json', 'r') as f:
             best_validation_score = json.load(f)
     except FileNotFoundError:
-        best_validation_score = {'mean_' + score_type: 0.0, 'std_' + score_type: 0.0}
+        if relation == 'greater':
+            best_validation_score = {'mean_' + score_type: 0.0, 'std_' + score_type: 0.0}
+        elif relation == 'less':
+            best_validation_score = {'mean_' + score_type: np.inf, 'std_' + score_type: np.inf}
 
     if relation == 'greater':
         update_condition = mean_validation_score > best_validation_score['mean_' + score_type]
