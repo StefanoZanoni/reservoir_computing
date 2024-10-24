@@ -453,4 +453,4 @@ if __name__ == '__main__':
                              initial_transients)
 
     elif dataset_name == 'mg17':
-        test_mg17(runs, model, results_path, hyperparameters, use_last_state, device, initial_transients)
+        test_mg17(model, results_path, hyperparameters, use_last_state, device, initial_transients)
