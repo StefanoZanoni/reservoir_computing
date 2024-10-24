@@ -235,7 +235,7 @@ class NonLinearCell(torch.nn.Module):
             self._forward_euler) if euler else self._forward_leaky_integrator
 
     @torch.no_grad()
-    def _forward_leaky_integrator(self, xt: torch.Tensor, memory_state: torch.FloatTensor) -> torch.FloatTensor:
+    def _forward_leaky_integrator(self, xt: torch.Tensor, memory_state: torch.FloatTensor | None = None) -> torch.FloatTensor:
         """
         Forward pass for the non-linear cell using the leaky integrator.
 
@@ -243,22 +243,33 @@ class NonLinearCell(torch.nn.Module):
         :param memory_state: Memory state at time t.
         :return: The non-linear state at time t.
         """
-
-        # h(t) = (1 - a) * h(t-1) + a * f(Wx * h(t-1) + Wm * m(t) + Wx * x(t) + b)
-        past_state = self._non_linear_state * self._one_minus_leaky_rate
-        self._non_linear_state = past_state.add_(
-            self._non_linear_function(
-                torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
-                .addmm_(xt, self.input_non_linear_kernel)
-                .addmm_(memory_state, self.memory_non_linear_kernel)
+        if memory_state is None:
+            # h(t) = (1 - a) * h(t-1) + a * f(Wx * h(t-1) + Wx * x(t) + b)
+            past_state = self._non_linear_state * self._one_minus_leaky_rate
+            self._non_linear_state = past_state.add_(
+                self._non_linear_function(
+                    torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
+                    .addmm_(xt, self.input_non_linear_kernel)
+                )
+                .mul_(self._leaky_rate)
             )
-            .mul_(self._leaky_rate)
-        )
+
+        else:
+            # h(t) = (1 - a) * h(t-1) + a * f(Wx * h(t-1) + Wm * m(t) + Wx * x(t) + b)
+            past_state = self._non_linear_state * self._one_minus_leaky_rate
+            self._non_linear_state = past_state.add_(
+                self._non_linear_function(
+                    torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
+                    .addmm_(xt, self.input_non_linear_kernel)
+                    .addmm_(memory_state, self.memory_non_linear_kernel)
+                )
+                .mul_(self._leaky_rate)
+            )
 
         return self._non_linear_state
 
     @torch.no_grad()
-    def _forward_euler(self, xt: torch.Tensor, memory_state: torch.FloatTensor) -> torch.FloatTensor:
+    def _forward_euler(self, xt: torch.Tensor, memory_state: torch.FloatTensor | None = None) -> torch.FloatTensor:
         """
         Forward pass for the non-linear cell using Euler integration.
 
@@ -267,19 +278,29 @@ class NonLinearCell(torch.nn.Module):
         :return: The non-linear state at time t.
         """
 
-        # h(t) = h(t-1) + ε * f(Wx * x(t) + Wm * m(t) + (W - γ * I) * h(t-1) + b)
-        self._non_linear_state += (
-            self._non_linear_function(
-                torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
-                .addmm_(xt, self.input_non_linear_kernel)
-                .addmm_(memory_state, self.memory_non_linear_kernel)
+        if memory_state is None:
+            # h(t) = h(t-1) + ε * f(Wx * x(t) + (W - γ * I) * h(t-1) + b)
+            self._non_linear_state += (
+                self._non_linear_function(
+                    torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
+                    .addmm_(xt, self.input_non_linear_kernel)
+                )
+                .mul_(self._epsilon)
             )
-            .mul_(self._epsilon)
-        )
+        else:
+            # h(t) = h(t-1) + ε * f(Wx * x(t) + Wm * m(t) + (W - γ * I) * h(t-1) + b)
+            self._non_linear_state += (
+                self._non_linear_function(
+                    torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
+                    .addmm_(xt, self.input_non_linear_kernel)
+                    .addmm_(memory_state, self.memory_non_linear_kernel)
+                )
+                .mul_(self._epsilon)
+            )
 
         return self._non_linear_state
 
-    def forward(self, xt: torch.Tensor, memory_state: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, xt: torch.Tensor, memory_state: torch.FloatTensor | None = None) -> torch.FloatTensor:
         """
         Forward pass for the non-linear cell using Euler integration.
 
