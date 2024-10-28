@@ -2,7 +2,6 @@ import os
 import json
 import random
 import csv
-import time
 from textwrap import indent
 
 import torch

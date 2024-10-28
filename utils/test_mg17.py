@@ -25,7 +25,6 @@ def test_mg17(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, results_
               disable_progress_bar=False)
 
     # validation
-    validation_scores = []
     validation_data = MG17(validation=True)
     validation_data.target = validation_data.target[:, initial_transients:]
     validation_dataloader = torch.utils.data.DataLoader(validation_data,
@@ -34,10 +33,8 @@ def test_mg17(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, results_
                                                         drop_last=False)
     validation_score = model.score(validation_dataloader, mse, device, standardize=True,
                                    use_last_state=use_last_state, disable_progress_bar=False)
-    validation_scores.append(validation_score)
 
     # test
-    test_scores = []
     test_data = MG17(test=True)
     test_data.target = test_data.target[:, initial_transients:]
     testing_dataloader = torch.utils.data.DataLoader(test_data,
@@ -46,7 +43,6 @@ def test_mg17(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, results_
                                                      drop_last=False)
     test_score = model.score(testing_dataloader, mse, device, standardize=True, use_last_state=use_last_state,
                              disable_progress_bar=False)
-    test_scores.append(test_score)
 
-    save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
-                 np.mean(test_scores), np.std(test_scores), 'mse', 'less')
+    save_results(results_path, hyperparameters, validation_score, 0,
+                 test_score, 0, 'mse', 'less')
