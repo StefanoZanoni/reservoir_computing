@@ -252,13 +252,12 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             for non_linear_layer in self.non_linear_layers:
                 non_linear_layer.reset_state(batch_size, device)
 
-    @torch.no_grad()
-    def _forward_core(self, x: torch.Tensor) \
+    def _forward(self, x: torch.Tensor) \
             -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         """
-        Core forward method for the Deep Reservoir Memory Network.
+        Forward method for the Deep Reservoir Memory Network.
 
-        :param x: Input tensor.
+        :param x: The input tensor.
 
         :return: The non-linear states, the non-linear state at the last time step,
         the memory states, and the memory state at the last time step.
@@ -323,36 +322,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                     memory_states[:, self._initial_transients:, :], memory_states[:, -1, :])
         else:
             return None, None, memory_states[:, self._initial_transients:, :], memory_states[:, -1, :]
-
-    def forward(self, x: torch.Tensor) \
-            -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
-        """
-        Forward method for the Deep Reservoir Memory Network.
-        This method is not meant to be used without the fit method.
-
-        :param x: The input tensor.
-
-        :return: The non-linear states, the non-linear state at the last time step,
-        the memory states, and the memory state at the last time step.
-        """
-
-        if not self._trained:
-            raise ValueError('The model has not been trained yet. Use the fit method to train the model.')
-
-        return self._forward_core(x)
-
-    def _forward(self, x: torch.Tensor) \
-            -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
-        """
-        Forward method for the Deep Reservoir Memory Network.
-
-        :param x: The input tensor.
-
-        :return: The non-linear states, the non-linear state at the last time step,
-        the memory states, and the memory state at the last time step.
-        """
-
-        return self._forward_core(x)
 
     @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,

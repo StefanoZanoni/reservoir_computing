@@ -181,8 +181,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
         for layer in self.reservoir:
             layer.reset_state(batch_size, device)
 
-    @torch.no_grad()
-    def _forward_core(self, x: torch.Tensor) -> tuple[torch.FloatTensor, torch.FloatTensor]:
+    def _forward(self, x: torch.Tensor) -> tuple:
         """
         Forward pass of the model.
 
@@ -216,32 +215,6 @@ class DeepEchoStateNetwork(torch.nn.Module):
             non_linear_states = non_linear_states[-1]
 
         return non_linear_states[:, self._initial_transients:, :], non_linear_states[:, -1, :]
-
-    def forward(self, x: torch.Tensor) -> tuple:
-        """
-        Forward pass of the model.
-        This method is meant to be used after the fit method has been called.
-
-        :param x: The input tensor.
-
-        :return: The state of the deep reservoir for all the time steps and the state for the last time step.
-        """
-
-        if not self._trained:
-            raise RuntimeError('Model has not been trained yet.')
-
-        return self._forward_core(x)
-
-    def _forward(self, x: torch.Tensor) -> tuple:
-        """
-        Forward pass of the model.
-
-        :param x: The input tensor.
-
-        :return: The state of the deep reservoir for all the time steps and the state for the last time step.
-        """
-
-        return self._forward_core(x)
 
     @torch.no_grad()
     def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
@@ -318,7 +291,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
             raise RuntimeError('Model has not been trained yet.')
         if standardize:
             if self._scaler is None:
-                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+                raise ValueError('Standardization is enabled but the scaler has not been fitted yet. Run the fit method'
+                                 'with standardize=True first.')
 
         if isinstance(data.dataset, torch.utils.data.Subset):
             dataset = data.dataset.dataset
@@ -349,7 +323,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
             raise RuntimeError('Model has not been trained yet.')
         if standardize:
             if self._scaler is None:
-                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
+                raise ValueError('Standardization is enabled but the scaler has not been fitted yet. Run the fit method'
+                                 'with standardize=True first.')
 
         batch_size = data.batch_size
         self._reset_state(batch_size, device)
