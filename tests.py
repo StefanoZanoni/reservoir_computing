@@ -430,23 +430,11 @@ if __name__ == '__main__':
 
     elif dataset_name == 'memory_capacity':
         if model_name == 'esn':
-            if concatenate_non_linear:
-                max_delay = non_linear_units * 2
-            else:
-                max_delay = non_linear_units * number_of_non_linear_layers * 2
+            max_delay = non_linear_units * 2
         elif model_name == 'rmn' and not just_memory:
-            if concatenate_non_linear and not concatenate_memory:
-                max_delay = (memory_units * number_of_memory_layers + non_linear_units) * 2
-            elif concatenate_memory and not concatenate_non_linear:
-                max_delay = (memory_units + non_linear_units * number_of_non_linear_layers) * 2
-            else:
-                max_delay = ((memory_units * number_of_memory_layers + non_linear_units * number_of_non_linear_layers)
-                             * 2)
+            max_delay = non_linear_units * 2
         else:
-            if concatenate_memory:
-                max_delay = memory_units * 2
-            else:
-                max_delay = memory_units * number_of_memory_layers * 2
+            max_delay = memory_units * 2
 
         test_memory_capacity(runs, results_path, hyperparameters, model, max_delay, device, use_last_state,
                              initial_transients)
