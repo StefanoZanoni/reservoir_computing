@@ -57,6 +57,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                  max_iter: int = 1000,
                  tolerance: float = 1e-4,
                  legendre: bool = False,
+                 legendre_input: bool = False,
                  theta: float = 1.0,
                  just_memory: bool = False,
                  input_to_all_non_linear: bool = False,
@@ -149,6 +150,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                        signs_from=signs_from,
                        fixed_input_kernel=fixed_input_kernel,
                        legendre=legendre,
+                       legendre_input=legendre_input,
                        theta=theta)
         ]
         if concatenate_memory:
@@ -166,6 +168,7 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                            signs_from=signs_from,
                            fixed_input_kernel=fixed_input_kernel,
                            legendre=legendre,
+                           legendre_input=legendre_input,
                            theta=theta)
             )
             last_h_memory_size = memory_layers[-1].memory_kernel.shape[0]

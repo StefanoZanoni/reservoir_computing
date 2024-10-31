@@ -86,6 +86,7 @@ class MemoryCell(torch.nn.Module):
                  input_memory_connectivity: int = 1,
                  theta: float = 1.0,
                  legendre: bool = False,
+                 legendre_input: bool = False,
                  distribution: str = 'uniform',
                  signs_from: str | None = None,
                  fixed_input_kernel: bool = False, ) \
@@ -112,7 +113,7 @@ class MemoryCell(torch.nn.Module):
         self.input_memory_kernel = init_input_kernel(
             input_units, memory_units, input_memory_connectivity,
             input_memory_scaling, 'fixed' if fixed_input_kernel else distribution,
-            signs_from=signs_from
+            signs_from=signs_from, legendre_input=legendre_input, theta=theta
         )
 
         self.memory_kernel = init_memory_kernel(memory_units, theta, legendre, memory_scaling)

@@ -2,7 +2,6 @@ import os
 import json
 import random
 import csv
-from textwrap import indent
 
 import torch
 import numpy as np
@@ -83,6 +82,7 @@ if __name__ == '__main__':
     parser.add_argument('--distribution', type=str, default='uniform', help='Weights distribution to use')
     parser.add_argument('--signs_from', type=str, default=None, help='Signs source to use')
     parser.add_argument('--fixed_input_kernels', action='store_true', help='Whether to use fixed input kernels or not')
+    parser.add_argument('--legendre_input', action='store_true', help='Whether to use Legendre input kernel or not')
     parser.add_argument('--non_linearity', type=str, default='tanh', help='Non-linearity to use')
     parser.add_argument('--effective_rescaling', action='store_true', help='Whether to use effective rescaling or not')
     parser.add_argument('--euler', action='store_true', help='Whether to use Euler non linear or not')
@@ -182,6 +182,7 @@ if __name__ == '__main__':
     distribution = args.distribution
     signs_from = args.signs_from
     fixed_input_kernel = args.fixed_input_kernels
+    legendre_input = args.legendre_input
     non_linearity = args.non_linearity
     circular_non_linear = args.circular_non_linear
     input_to_all_non_linear = args.input_to_all_non_linear
@@ -418,8 +419,8 @@ if __name__ == '__main__':
                                            concatenate_memory=concatenate_memory,
                                            circular_non_linear_kernel=circular_non_linear, euler=euler, epsilon=epsilon,
                                            gamma=gamma, alpha=alpha, max_iter=max_iter, tolerance=tolerance,
-                                           legendre=legendre_memory, theta=theta, just_memory=just_memory,
-                                           input_to_all_non_linear=input_to_all_non_linear,
+                                           legendre=legendre_memory, legendre_input=legendre_input, theta=theta,
+                                           just_memory=just_memory, input_to_all_non_linear=input_to_all_non_linear,
                                            input_to_all_memory=input_to_all_memory).to(device)
 
     # choose a task

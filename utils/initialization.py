@@ -198,6 +198,19 @@ def legendre_tensor_init(M: int, theta: float) -> torch.FloatTensor:
     return torch.sparse_coo_tensor(indices.T, values, (M, M), dtype=torch.float32, requires_grad=False).to_dense()
 
 
+def legendre_input_init(M: int, theta: float) -> torch.FloatTensor:
+    """
+    Generates an input kernel of size 1 x M using Legendre polynomials.
+
+    :param M: The number of hidden units.
+    :param theta: Scaling factor.
+    :return: 1 x M matrix.
+    """
+
+    return (torch.tensor([((2 * i + 1) / theta) * (-1) ** i for i in range(M)], dtype=torch.float32, requires_grad=False)
+            .unsqueeze(0))
+
+
 def init_bias(bias: bool, non_linear_units: int, input_scaling: float, bias_scaling: float) -> torch.FloatTensor:
     """
     Initialize the bias tensor.
@@ -286,7 +299,8 @@ def init_non_linear_kernel(non_linear_units: int, non_linear_connectivity: int, 
 
 
 def init_input_kernel(input_units: int, units: int, input_connectivity: int, input_scaling: float, distribution: str,
-                      signs_from: str | None = None) -> torch.FloatTensor:
+                      signs_from: str | None = None, legendre_input: bool = False, theta: float = 1) \
+        -> torch.FloatTensor:
     """
     Initialize the input kernel.
 
@@ -296,12 +310,21 @@ def init_input_kernel(input_units: int, units: int, input_connectivity: int, inp
     :param input_scaling: The scaling factor for the input kernel.
     :param distribution: The distribution from which the input kernel has to be sampled.
     :param signs_from: The source of the signs for the fixed distribution.
+    :param legendre_input: Whether to use the input kernel derived from legendre polynomials.
+    :param theta: The scaling factor for the Legendre input kernel.
 
     :return: The input kernel matrix.
     """
 
-    kernel = sparse_tensor_init(input_units, units, C=input_connectivity, scaling=input_scaling, signs_from=signs_from,
-                                distribution=distribution)
+    if legendre_input and input_units == 1:
+        kernel = legendre_input_init(units, theta)
+    else:
+        if legendre_input and input_units > 1:
+            import warnings
+            warnings.warn("Legendre input kernel is only available for inputs with 1 dimension."
+                          " Default input kernel will be used.")
+        kernel = sparse_tensor_init(input_units, units, C=input_connectivity, scaling=input_scaling,
+                                    signs_from=signs_from, distribution=distribution)
     return torch.nn.Parameter(kernel, requires_grad=False)
 
 
