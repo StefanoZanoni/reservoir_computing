@@ -207,8 +207,8 @@ def legendre_input_init(M: int, theta: float) -> torch.FloatTensor:
     :return: 1 x M matrix.
     """
 
-    return (torch.tensor([((2 * i + 1) / theta) * (-1) ** i for i in range(M)], dtype=torch.float32, requires_grad=False)
-            .unsqueeze(0))
+    return torch.tensor([((2 * i + 1) / theta) * (-1) ** i for i in range(M)],
+                        dtype=torch.float32, requires_grad=False).unsqueeze(0)
 
 
 def init_bias(bias: bool, non_linear_units: int, input_scaling: float, bias_scaling: float) -> torch.FloatTensor:
