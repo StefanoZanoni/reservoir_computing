@@ -373,6 +373,9 @@ if __name__ == '__main__':
         if fixed_input_kernel:
             hyperparameters['fixed_input_kernel'] = True
             hyperparameters['signs_from'] = signs_from
+        if legendre_input:
+            hyperparameters['legendre_input'] = True
+            hyperparameters['theta'] = theta
         if circular_non_linear:
             hyperparameters['circular_non_linear'] = True
         if euler:
