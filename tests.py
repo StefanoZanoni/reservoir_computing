@@ -357,13 +357,13 @@ if __name__ == '__main__':
                            'tolerance': tolerance,
                            'initial_transients': initial_transients,
                            }
-        if concatenate_non_linear:
+        if concatenate_non_linear and not just_memory:
             hyperparameters['concatenate_non_linear'] = True
-        if input_to_all_non_linear:
+        if input_to_all_non_linear and not just_memory:
             hyperparameters['input_to_all_non_linear'] = True
-        if effective_rescaling:
+        if effective_rescaling and not just_memory:
             hyperparameters['effective_rescaling'] = True
-        if bias:
+        if bias and not just_memory:
             hyperparameters['bias'] = True
             hyperparameters['bias_scaling'] = bias_scaling
         if fixed_input_kernel:
@@ -388,7 +388,7 @@ if __name__ == '__main__':
             hyperparameters['theta'] = theta
         if just_memory:
             hyperparameters['just_memory'] = True
-        if number_of_non_linear_layers > 1:
+        if number_of_non_linear_layers > 1 and not just_memory:
             hyperparameters['inter_non_linear_scaling'] = inter_non_linear_scaling
             hyperparameters['inter_non_linear_connectivity'] = inter_non_linear_connectivity
         if number_of_memory_layers > 1:
