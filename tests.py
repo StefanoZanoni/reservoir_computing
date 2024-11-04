@@ -1,14 +1,10 @@
 import os
-import json
 import random
-import csv
 
 import torch
 import numpy as np
 
 from argparse import ArgumentParser
-
-from tqdm import tqdm
 
 from echo_state_network import DeepEchoStateNetwork
 from reservoir_memory_network import DeepReservoirMemoryNetwork
