@@ -251,10 +251,10 @@ class DeepEchoStateNetwork(torch.nn.Module):
         try:
             # iterate over the data
             for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
-                x, y = x.to(device), y.to(device)
+                x = x.to(device)
                 states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \
                     else self._forward(x)[0].cpu().numpy()
-                ys[idx:idx + batch_size] = y.cpu().numpy()
+                ys[idx:idx + batch_size] = y.numpy()
                 idx += batch_size
 
             if not use_last_state:
@@ -288,21 +288,44 @@ class DeepEchoStateNetwork(torch.nn.Module):
         """
 
         if not self._trained:
-            raise RuntimeError('Model has not been trained yet.')
+            raise ValueError('The model has not been trained yet. Use the fit method to train the model.')
         if standardize:
             if self._scaler is None:
-                raise ValueError('Standardization is enabled but the scaler has not been fitted yet. Run the fit method'
-                                 'with standardize=True first.')
+                raise ValueError('Standardization is enabled but the model has not been fitted yet.')
 
-        if isinstance(data.dataset, torch.utils.data.Subset):
-            dataset = data.dataset.dataset
-            indices = data.dataset.indices
-            target = getattr(dataset, 'target', None)[indices][:len(data) * data.batch_size]
-        else:
-            dataset = data.dataset
-            target = getattr(dataset, 'target', None)[:len(data) * data.batch_size]
-        return score_function(self.predict(data, device, standardize, use_last_state, disable_progress_bar),
-                              target.cpu().numpy())
+        batch_size = data.batch_size
+        self._reset_state(batch_size, device)
+
+        num_batches = len(data)
+        state_size = self._total_units
+
+        # pre-allocate memory for the states and the targets
+        dataset = data.dataset.dataset if isinstance(data.dataset, torch.utils.data.Subset) else data.dataset
+        data_attr = getattr(dataset, 'data', None)
+        target_attr = getattr(dataset, 'target', None)
+        if data_attr is None or target_attr is None:
+            raise AttributeError('Dataset does not have the required attributes `data` and `target`.')
+        states = np.empty((num_batches * batch_size, data_attr.shape[1] - self._initial_transients,
+                           state_size), dtype=np.float32) if not use_last_state \
+            else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
+        ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32, order='F')
+
+        idx = 0
+        for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
+            x = x.to(device)
+            states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \
+                else self._forward(x)[0].cpu().numpy()
+            ys[idx:idx + batch_size] = y.numpy()
+            idx += batch_size
+
+        if not use_last_state:
+            states = np.concatenate(states, axis=0)
+            ys = np.repeat(ys, states.shape[0] // ys.shape[0], axis=0) if ys.shape[1] == 1 else ys.T
+
+        if standardize:
+            states = self._scaler.transform(states)
+
+        return score_function(self.readout.predict(states), ys)
 
     @torch.no_grad()
     def predict(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
