@@ -29,7 +29,7 @@ class SequentialMNIST(Dataset):
                                    download=True,
                                    transform=transform)
         self.data.data = self.data.data.view(-1, 28 * 28).float()
-        self.target = self.data.targets.unsqueeze(1)
+        self.target = self.data.targets.unsqueeze(1).to(torch.int8)
         self.data = self.data.data
 
         if permute:

@@ -270,7 +270,10 @@ if __name__ == '__main__':
             hyperparameters['effective_rescaling'] = True
         if bias:
             hyperparameters['bias'] = True
-            hyperparameters['bias_scaling'] = bias_scaling
+            if bias_scaling is None:
+                hyperparameters['bias_scaling'] = input_non_linear_scaling
+            else:
+                hyperparameters['bias_scaling'] = bias_scaling
         if fixed_input_kernel:
             hyperparameters['fixed_input_kernel'] = True
             hyperparameters['signs_from'] = signs_from
@@ -365,7 +368,10 @@ if __name__ == '__main__':
             hyperparameters['effective_rescaling'] = True
         if bias and not just_memory:
             hyperparameters['bias'] = True
-            hyperparameters['bias_scaling'] = bias_scaling
+            if bias_scaling is None:
+                hyperparameters['bias_scaling'] = input_non_linear_scaling
+            else:
+                hyperparameters['bias_scaling'] = bias_scaling
         if fixed_input_kernel:
             hyperparameters['fixed_input_kernel'] = True
             hyperparameters['signs_from'] = signs_from
@@ -425,7 +431,7 @@ if __name__ == '__main__':
     # choose a task
     if dataset_name == 'sequential_mnist':
 
-        test_sequential_mnist(runs, model, results_path, hyperparameters, validation_ratio, training_batch_size,
+        test_sequential_mnist(model, results_path, hyperparameters, validation_ratio, training_batch_size,
                               validation_batch_size, testing_batch_size, use_last_state, device)
 
     elif dataset_name == 'memory_capacity':
