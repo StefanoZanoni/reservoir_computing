@@ -14,10 +14,10 @@ def save_results(results_path: str, hyperparameters: dict, mean_validation_score
     if isinstance(std_test_score, np.float32):
         std_test_score = float(std_test_score)
 
-    mean_validation_score = round(mean_validation_score, 2)
-    std_validation_score = round(std_validation_score, 2)
-    mean_test_score = round(mean_test_score, 2)
-    std_test_score = round(std_test_score, 2)
+    mean_validation_score = round(mean_validation_score, 4)
+    std_validation_score = round(std_validation_score, 4)
+    mean_test_score = round(mean_test_score, 4)
+    std_test_score = round(std_test_score, 4)
 
     # try to load the best configuration found so far
     try:
