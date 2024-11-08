@@ -24,7 +24,7 @@ def sparse_tensor_init(M: int, N: int, C: int = 1, distribution: str = 'uniform'
     each input dimension is projected only to C neurons). The non-zero elements are generated randomly from a uniform
     distribution in [-1,1], from a standard normal distribution scaled to a variance equal to 1/C,
     or they are generated deterministically all equals to 1 if distribution is 'fixed'.
-    In this case, the signs can be generated from different sources.
+    In the latter case, the signs can be generated from different sources.
     They are generated based on the digits of pi, e, a logistic map or randomly.
     In particular, for pi and e, the signs are thresholded at 4.5.
     For the logistic map, the signs are generated based on the value of the logistic map and a threshold of 0.5.
@@ -321,10 +321,10 @@ def init_input_kernel(input_units: int, units: int, input_connectivity: int, inp
         # Augment the block matrix for ZOH discretization
         M = legendre_tensor_init(units, theta)
         block_matrix = torch.zeros((units + 1, units + 1), dtype=torch.float32)
-        block_matrix[1:, 1:] = M                 # Memory dynamics
+        block_matrix[1:, 1:] = M                  # Memory dynamics
         block_matrix[1:, 0] = kernel.squeeze()    # Input influence on memory
 
-        # Compute matrix exponential for ZOH
+        # Compute matrix exponential for ZOH discretization
         block_matrix_exp = torch.matrix_exp(block_matrix)
         # Extract the ZOH discretized input kernel from the first column
         kernel = block_matrix_exp[1:, 0].unsqueeze(0)
