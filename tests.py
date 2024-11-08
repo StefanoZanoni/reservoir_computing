@@ -140,7 +140,7 @@ if __name__ == '__main__':
     model_name = args.model
 
     validation_ratio = args.validation_ratio
-    training_batch_size = args.batch_validation
+    training_batch_size = args.batch_training
     validation_batch_size = args.batch_validation
     testing_batch_size = args.batch_testing
 
