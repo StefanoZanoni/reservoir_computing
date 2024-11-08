@@ -127,7 +127,7 @@ def fast_spectral_rescaling(W: torch.FloatTensor, rho_desired: float) -> torch.F
     return W * value
 
 
-def circular_tensor_init(M: int, distribution: str = 'uniform', scaling: float = 1.0) -> torch.FloatTensor:
+def circular_tensor_init(M: int, distribution: str = 'fixed', scaling: float = 1.0) -> torch.FloatTensor:
     """
     Generates an M x M matrix with ring topology.
     Each neuron receives input only from one neuron and propagates its activation only to one other neuron.
@@ -318,6 +318,16 @@ def init_input_kernel(input_units: int, units: int, input_connectivity: int, inp
 
     if legendre_input and input_units == 1:
         kernel = legendre_input_init(units, theta)
+        # Augment the block matrix for ZOH discretization
+        M = legendre_tensor_init(units, theta)
+        block_matrix = torch.zeros((units + 1, units + 1), dtype=torch.float32)
+        block_matrix[1:, 1:] = M                 # Memory dynamics
+        block_matrix[1:, 0] = kernel.squeeze()    # Input influence on memory
+
+        # Compute matrix exponential for ZOH
+        block_matrix_exp = torch.matrix_exp(block_matrix)
+        # Extract the ZOH discretized input kernel from the first column
+        kernel = block_matrix_exp[1:, 0].unsqueeze(0)
     else:
         if legendre_input and input_units > 1:
             import warnings
