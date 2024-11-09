@@ -19,16 +19,16 @@ class SequentialMNIST(Dataset):
         :param seed: Seed for the random permutation.
         """
 
-        transform_list = [transforms.ToTensor(), transforms.Lambda(lambda x: x / 255.0)]
-        if normalize:
-            transform_list.append(transforms.Normalize((0.1307,), (0.3081,)))
+        transform_list = [transforms.ToTensor()]
         transform = transforms.Compose(transform_list)
 
         self.data = datasets.MNIST(root='./datasets/sequential_mnist/data/',
                                    train=training,
                                    download=True,
                                    transform=transform)
-        self.data.data = self.data.data.view(-1, 28 * 28).float()
+        self.data.data = self.data.data.view(-1, 28 * 28).float() / 255.0
+        if normalize:
+            self.data.data = (self.data.data - 0.1307) / 0.3081
         self.target = self.data.targets.unsqueeze(1).to(torch.int8)
         self.data = self.data.data
 
@@ -37,6 +37,7 @@ class SequentialMNIST(Dataset):
                 np.random.seed(seed)
             permutation = np.random.permutation(28 * 28)
             self.data = self.data[:, permutation]
+        pass
 
     def __len__(self):
         """
