@@ -245,14 +245,10 @@ if __name__ == '__main__':
                            'input_units': input_units,
                            'non_linear_units': non_linear_units,
 
-                           'non_linear_scaling': non_linear_scaling,
                            'input_non_linear_scaling': input_non_linear_scaling,
 
                            'input_non_linear_connectivity': input_non_linear_connectivity,
                            'non_linear_connectivity': non_linear_connectivity,
-
-                           'spectral_radius': spectral_radius,
-                           'leaky_rate': leaky_rate,
 
                            'distribution': distribution,
                            'non_linearity': non_linearity,
@@ -262,6 +258,9 @@ if __name__ == '__main__':
                            'tolerance': tolerance,
                            'initial_transients': initial_transients,
                            }
+        if not euler:
+            hyperparameters['spectral_radius'] = spectral_radius
+            hyperparameters['leaky_rate'] = leaky_rate
         if concatenate_non_linear:
             hyperparameters['concatenate_non_linear'] = True
         if input_to_all_non_linear:
@@ -283,6 +282,7 @@ if __name__ == '__main__':
             hyperparameters['euler'] = True
             hyperparameters['epsilon'] = epsilon
             hyperparameters['gamma'] = gamma
+            hyperparameters['non_linear_scaling'] = non_linear_scaling
         if number_of_non_linear_layers > 1:
             hyperparameters['inter_non_linear_scaling'] = inter_non_linear_scaling
             hyperparameters['inter_non_linear_connectivity'] = inter_non_linear_connectivity
@@ -339,7 +339,6 @@ if __name__ == '__main__':
                            'memory_units': memory_units,
 
                            'memory_scaling': memory_scaling,
-                           'non_linear_scaling': non_linear_scaling,
                            'input_memory_scaling': input_memory_scaling,
                            'input_non_linear_scaling': input_non_linear_scaling,
                            'memory_non_linear_scaling': memory_non_linear_scaling,
@@ -349,9 +348,6 @@ if __name__ == '__main__':
                            'non_linear_connectivity': non_linear_connectivity,
                            'memory_non_linear_connectivity': memory_non_linear_connectivity,
 
-                           'spectral_radius': spectral_radius,
-                           'leaky_rate': leaky_rate,
-
                            'distribution': distribution,
                            'non_linearity': non_linearity,
 
@@ -360,6 +356,9 @@ if __name__ == '__main__':
                            'tolerance': tolerance,
                            'initial_transients': initial_transients,
                            }
+        if not euler:
+            hyperparameters['spectral_radius'] = spectral_radius
+            hyperparameters['leaky_rate'] = leaky_rate
         if concatenate_non_linear and not just_memory:
             hyperparameters['concatenate_non_linear'] = True
         if input_to_all_non_linear and not just_memory:
@@ -384,6 +383,7 @@ if __name__ == '__main__':
             hyperparameters['euler'] = True
             hyperparameters['epsilon'] = epsilon
             hyperparameters['gamma'] = gamma
+            hyperparameters['non_linear_scaling'] = non_linear_scaling
 
         if concatenate_memory:
             hyperparameters['concatenate_memory'] = True
