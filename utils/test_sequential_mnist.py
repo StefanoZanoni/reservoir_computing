@@ -18,7 +18,7 @@ def test_sequential_mnist(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwo
                           validation_batch_size: int, testing_batch_size: int, use_last_state: bool,
                           device: torch.device):
 
-    data = SequentialMNIST(training=True, normalize=True)
+    data = SequentialMNIST(training=True, normalize=True, permute=True, seed=5)
     total_size = len(data)
     val_size = int(validation_ratio * total_size)
     train_size = total_size - val_size
@@ -37,7 +37,7 @@ def test_sequential_mnist(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwo
     validation_score = model.score(validation_dataloader, accuracy, device, standardize=True,
                                    use_last_state=use_last_state, disable_progress_bar=False)
 
-    data = SequentialMNIST(training=False, normalize=True)
+    data = SequentialMNIST(training=False, normalize=True, permute=True, seed=5)
     testing_dataset = torch.utils.data.DataLoader(data,
                                                   batch_size=testing_batch_size,
                                                   shuffle=True,
