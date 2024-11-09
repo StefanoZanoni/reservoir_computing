@@ -104,8 +104,8 @@ class ReservoirCell(torch.nn.Module):
                         distribution, non_linearity, signs_from)
 
         self.recurrent_units = recurrent_units
-        self._leaky_rate = leaky_rate
-        self._one_minus_leaky_rate = 1 - leaky_rate
+        self._leaky_rate = torch.tensor(leaky_rate, dtype=torch.float32, requires_grad=False)
+        self._one_minus_leaky_rate = torch.tensor(1 - leaky_rate, dtype=torch.float32, requires_grad=False)
 
         self.input_kernel = init_input_kernel(input_units, recurrent_units, input_connectivity, input_scaling,
                                               'fixed' if circular_recurrent_kernel and fixed_input_kernel
@@ -117,7 +117,7 @@ class ReservoirCell(torch.nn.Module):
                                                        circular_recurrent_kernel, euler, gamma, recurrent_scaling)
         self.bias = init_bias(bias, recurrent_units, input_scaling, bias_scaling)
 
-        self._epsilon = epsilon
+        self._epsilon = torch.tensor(epsilon, dtype=torch.float32, requires_grad=False)
         self._non_linear_function: Callable[[torch.FloatTensor], torch.FloatTensor] = \
             torch.tanh if non_linearity == 'tanh' else lambda x: x
         self._state = None

@@ -209,8 +209,8 @@ class NonLinearCell(torch.nn.Module):
                                    memory_non_linear_connectivity, input_non_linear_connectivity,
                                    non_linear_connectivity, distribution, non_linearity, signs_from)
 
-        self._leaky_rate = leaky_rate
-        self._one_minus_leaky_rate = 1 - leaky_rate
+        self._leaky_rate = torch.tensor(leaky_rate, dtype=torch.float32, requires_grad=False)
+        self._one_minus_leaky_rate = torch.tensor(1 - leaky_rate, dtype=torch.float32, requires_grad=False)
 
         self.input_non_linear_kernel = init_input_kernel(
             input_units, non_linear_units, input_non_linear_connectivity,
@@ -222,7 +222,7 @@ class NonLinearCell(torch.nn.Module):
                                                         spectral_radius, leaky_rate, effective_rescaling,
                                                         circular_non_linear_kernel, euler, gamma,
                                                         non_linear_scaling)
-        self._epsilon = epsilon
+        self._epsilon = torch.tensor(epsilon, dtype=torch.float32, requires_grad=False)
         self.memory_non_linear_kernel = init_input_kernel(memory_units, non_linear_units,
                                                           memory_non_linear_connectivity, memory_non_linear_scaling,
                                                           distribution)
