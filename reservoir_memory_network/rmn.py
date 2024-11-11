@@ -1,6 +1,7 @@
 import torch
 
 from typing import Callable
+
 from utils.initialization import init_memory_kernel, init_input_kernel, init_non_linear_kernel, init_bias
 
 
@@ -118,6 +119,7 @@ class MemoryCell(torch.nn.Module):
 
         self.memory_kernel = init_memory_kernel(memory_units, theta, legendre, memory_scaling)
         self._memory_state = None
+        self._out = None
 
     @torch.no_grad()
     def forward(self, xt: torch.Tensor) -> torch.FloatTensor:
@@ -130,7 +132,7 @@ class MemoryCell(torch.nn.Module):
         """
 
         # m(t) = Vm * m(t-1) + Vx * x(t)
-        self._memory_state = torch.addmm(torch.matmul(xt, self.input_memory_kernel),
+        self._memory_state = torch.addmm(torch.mm(xt, self.input_memory_kernel, out=self._out),
                                          self._memory_state, self.memory_kernel)
 
         return self._memory_state
@@ -143,6 +145,8 @@ class MemoryCell(torch.nn.Module):
         :param device: The device to use.
         """
 
+        self._out = torch.empty((batch_size, self.memory_kernel.shape[0]), dtype=torch.float32,
+                                device=device, requires_grad=False)
         self._memory_state = torch.zeros((batch_size, self.memory_kernel.shape[0]), dtype=torch.float32,
                                          device=device, requires_grad=False)
 
@@ -228,15 +232,18 @@ class NonLinearCell(torch.nn.Module):
                                                           distribution)
         self.bias = init_bias(bias, non_linear_units, input_non_linear_scaling, bias_scaling)
 
-        self._non_linear_function: Callable[[torch.FloatTensor], torch.FloatTensor] =\
-            torch.tanh if non_linearity == 'tanh' else lambda x: x
+        self._non_linear_function: \
+            Callable[[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor | None], torch.FloatTensor] = \
+            lambda x, out=None: torch.tanh(x, out=out) if non_linearity == 'tanh' else torch.add(x, 0, out=out)
+        self._out = None
 
         self._non_linear_state = None
         self._forward_function: Callable[[torch.Tensor, torch.FloatTensor], torch.FloatTensor] = (
             self._forward_euler) if euler else self._forward_leaky_integrator
 
     @torch.no_grad()
-    def _forward_leaky_integrator(self, xt: torch.Tensor, memory_state: torch.FloatTensor | None = None) -> torch.FloatTensor:
+    def _forward_leaky_integrator(self, xt: torch.Tensor,
+                                  memory_state: torch.FloatTensor | None = None) -> torch.FloatTensor:
         """
         Forward pass for the non-linear cell using the leaky integrator.
 
@@ -244,13 +251,14 @@ class NonLinearCell(torch.nn.Module):
         :param memory_state: Memory state at time t.
         :return: The non-linear state at time t.
         """
+
         if memory_state is None:
             # h(t) = (1 - a) * h(t-1) + a * f(Wx * h(t-1) + Wx * x(t) + b)
             past_state = self._non_linear_state * self._one_minus_leaky_rate
             self._non_linear_state = past_state.add_(
                 self._non_linear_function(
                     torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
-                    .addmm_(xt, self.input_non_linear_kernel)
+                    .addmm_(xt, self.input_non_linear_kernel), out=self._out
                 )
                 .mul_(self._leaky_rate)
             )
@@ -262,7 +270,7 @@ class NonLinearCell(torch.nn.Module):
                 self._non_linear_function(
                     torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
                     .addmm_(xt, self.input_non_linear_kernel)
-                    .addmm_(memory_state, self.memory_non_linear_kernel)
+                    .addmm_(memory_state, self.memory_non_linear_kernel), out=self._out
                 )
                 .mul_(self._leaky_rate)
             )
@@ -284,7 +292,7 @@ class NonLinearCell(torch.nn.Module):
             self._non_linear_state += (
                 self._non_linear_function(
                     torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
-                    .addmm_(xt, self.input_non_linear_kernel)
+                    .addmm_(xt, self.input_non_linear_kernel), out=self._out
                 )
                 .mul_(self._epsilon)
             )
@@ -294,7 +302,7 @@ class NonLinearCell(torch.nn.Module):
                 self._non_linear_function(
                     torch.addmm(self.bias, self._non_linear_state, self.non_linear_kernel)
                     .addmm_(xt, self.input_non_linear_kernel)
-                    .addmm_(memory_state, self.memory_non_linear_kernel)
+                    .addmm_(memory_state, self.memory_non_linear_kernel), out=self._out
                 )
                 .mul_(self._epsilon)
             )
@@ -320,5 +328,9 @@ class NonLinearCell(torch.nn.Module):
         :param device: The device to use.
         """
 
+        self._epsilon = self._epsilon.to(device)
+        self._leaky_rate = self._leaky_rate.to(device)
+        self._one_minus_leaky_rate = self._one_minus_leaky_rate.to(device)
         self._non_linear_state = torch.zeros((batch_size, self.non_linear_kernel.shape[0]), dtype=torch.float32,
                                              device=device, requires_grad=False)
+        self._out = torch.empty_like(self._non_linear_state, device=device, dtype=torch.float32, requires_grad=False)

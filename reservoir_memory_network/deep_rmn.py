@@ -485,11 +485,3 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             states = self._scaler.transform(states)
 
         return self.readout.predict(states)
-
-    def reset_state(self) -> None:
-        """
-        Resets the internal state of the reservoir.
-        """
-
-        for reservoir in self.reservoir:
-            reservoir.reset_state()

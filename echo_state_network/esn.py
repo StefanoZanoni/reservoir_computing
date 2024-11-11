@@ -118,8 +118,10 @@ class ReservoirCell(torch.nn.Module):
         self.bias = init_bias(bias, recurrent_units, input_scaling, bias_scaling)
 
         self._epsilon = torch.tensor(epsilon, dtype=torch.float32, requires_grad=False)
-        self._non_linear_function: Callable[[torch.FloatTensor], torch.FloatTensor] = \
-            torch.tanh if non_linearity == 'tanh' else lambda x: x
+        self._non_linear_function: \
+            Callable[[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor | None], torch.FloatTensor] = \
+            lambda x, out=None: torch.tanh(x, out=out) if non_linearity == 'tanh' else torch.add(x, 0, out=out)
+        self._out = None
         self._state = None
         self._forward_function: Callable[[torch.Tensor], torch.FloatTensor] = (
             self._forward_euler) if euler else self._forward_leaky_integrator
@@ -139,7 +141,7 @@ class ReservoirCell(torch.nn.Module):
         self._state = past_state.add_(
             self._non_linear_function(
                 torch.addmm(self.bias, self._state, self.recurrent_kernel)
-                .addmm_(xt, self.input_kernel)
+                .addmm_(xt, self.input_kernel), out=self._out
             )
             .mul_(self._leaky_rate)
         )
@@ -160,7 +162,7 @@ class ReservoirCell(torch.nn.Module):
         self._state += (
             self._non_linear_function(
                 torch.addmm(self.bias, self._state, self.recurrent_kernel)
-                .addmm_(xt, self.input_kernel)
+                .addmm_(xt, self.input_kernel), out=self._out
             )
             .mul_(self._epsilon)
         )
@@ -186,5 +188,9 @@ class ReservoirCell(torch.nn.Module):
         :param device: The device to use.
         """
 
+        self._leaky_rate = self._leaky_rate.to(device)
+        self._one_minus_leaky_rate = self._one_minus_leaky_rate.to(device)
+        self._epsilon = self._epsilon.to(device)
         self._state = torch.zeros((batch_size, self.recurrent_units), dtype=torch.float32,
                                   requires_grad=False, device=device)
+        self._out = torch.empty_like(self._state, requires_grad=False, device=device, dtype=torch.float32)

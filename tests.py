@@ -1,5 +1,6 @@
 import os
 import random
+import subprocess
 
 import torch
 import numpy as np
@@ -22,6 +23,32 @@ warnings.filterwarnings("ignore", module="sklearn")
 torch.set_num_threads(os.cpu_count())
 os.environ['OMP_NUM_THREADS'] = str(os.cpu_count())
 os.environ['MKL_NUM_THREADS'] = str(os.cpu_count())
+
+
+def get_library_path(library_name):
+    try:
+        result = subprocess.run(['ldconfig', '-p'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for line in result.stdout.splitlines():
+            if library_name in line:
+                return line.split()[-1]
+    except Exception as e:
+        print(f"Error finding {library_name}: {e}")
+    return None
+
+
+jemalloc_path = get_library_path('jemalloc.so')
+tcmalloc_path = get_library_path('libtcmalloc.so')
+
+if jemalloc_path and tcmalloc_path:
+    os.environ['LD_PRELOAD'] = f'{jemalloc_path}:{tcmalloc_path}:' + os.environ.get('LD_PRELOAD', '')
+elif jemalloc_path:
+    os.environ['LD_PRELOAD'] = f'{jemalloc_path}:' + os.environ.get('LD_PRELOAD', '')
+elif tcmalloc_path:
+    os.environ['LD_PRELOAD'] = f'{tcmalloc_path}:' + os.environ.get('LD_PRELOAD', '')
+
+import torch._inductor.config as config
+
+config.cpp_wrapper = True
 
 
 def generate_results_path(model_name, dataset_name, number_of_layers, non_linear_units, memory_units, euler,
