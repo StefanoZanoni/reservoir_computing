@@ -82,7 +82,6 @@ class DeepEchoStateNetwork(torch.nn.Module):
         """
 
         super().__init__()
-        self._input_to_all = input_to_all
         self._initial_transients = initial_transients
         self._scaler = None
         self._concatenate = concatenate
@@ -169,8 +168,10 @@ class DeepEchoStateNetwork(torch.nn.Module):
             else:
                 self.readout = LinearRegression()
         self._trained = False
+        self._non_linear_states = None
+        self._concatenate_state_input = [input_to_all and idx > 0 for idx in range(number_of_layers)]
 
-    def _reset_state(self, batch_size: int, device: torch.device) -> None:
+    def _reset_state(self, batch_size: int, seq_len: int, device: torch.device) -> None:
         """
         Resets the state of the reservoir layers.
 
@@ -181,6 +182,13 @@ class DeepEchoStateNetwork(torch.nn.Module):
         for layer in self.reservoir:
             layer.reset_state(batch_size, device)
 
+        # Pre-allocate layer_states
+        self._non_linear_states = [
+            torch.empty((batch_size, seq_len, layer.recurrent_kernel.shape[0]),
+                        device=device, requires_grad=False, dtype=torch.float32)
+            for layer in self.reservoir
+        ]
+
     def _forward(self, x: torch.Tensor) -> tuple:
         """
         Forward pass of the model.
@@ -190,29 +198,24 @@ class DeepEchoStateNetwork(torch.nn.Module):
         :return: The state of the deep reservoir for all the time steps and the state for the last time step.
         """
 
-        non_linear_states = []
-        last_non_linear_state = x
         seq_len = x.shape[1]
-        x_is_dim2 = x.dim() == 2
 
+        last_non_linear_state = x
         for idx, non_linear_layer in enumerate(self.reservoir):
-            layer_states = torch.empty((x.shape[0], seq_len, non_linear_layer.recurrent_kernel.shape[0]),
-                                       device=x.device, requires_grad=False, dtype=torch.float32)
-            is_dim2 = last_non_linear_state.dim() == 2
-            concatenate_state_input = self._input_to_all and idx > 0
-            for t in range(seq_len):
-                last_state_t = last_non_linear_state[:, t].unsqueeze(1) if is_dim2 else last_non_linear_state[:, t]
-                if concatenate_state_input:
-                    xt = x[:, t].unsqueeze(1) if x_is_dim2 else x[:, t]
-                    last_state_t = torch.cat([last_state_t, xt], dim=-1)
-                layer_states[:, t, :].copy_(non_linear_layer(last_state_t))
-            non_linear_states.append(layer_states)
+            layer_states = self._non_linear_states[idx]
+            if self._concatenate_state_input[idx]:
+                for t in range(seq_len):
+                    (layer_states[:, t, :].copy_
+                     (non_linear_layer(torch.cat([last_non_linear_state[:, t], x[:, t]], dim=-1))))
+            else:
+                for t in range(seq_len):
+                    layer_states[:, t, :].copy_(non_linear_layer(last_non_linear_state[:, t]))
             last_non_linear_state = layer_states
 
         if self._concatenate:
-            non_linear_states = torch.cat(non_linear_states, dim=-1)
+            non_linear_states = torch.cat(self._non_linear_states, dim=-1)
         else:
-            non_linear_states = non_linear_states[-1]
+            non_linear_states = self._non_linear_states[-1]
 
         return non_linear_states[:, self._initial_transients:, :], non_linear_states[:, -1, :]
 
@@ -230,8 +233,6 @@ class DeepEchoStateNetwork(torch.nn.Module):
         """
 
         batch_size = data.batch_size
-        self._reset_state(batch_size, device)
-
         num_batches = len(data)
         state_size = self._total_units
 
@@ -241,10 +242,12 @@ class DeepEchoStateNetwork(torch.nn.Module):
         target_attr = getattr(dataset, 'target', None)
         if data_attr is None or target_attr is None:
             raise AttributeError('Dataset does not have the required attributes `data` and `target`.')
-        states = np.empty((num_batches * batch_size, data_attr.shape[1] - self._initial_transients,
+        seq_len = data_attr.shape[1]
+        states = np.empty((num_batches * batch_size, seq_len - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
         ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32, order='F')
+        self._reset_state(batch_size, seq_len, device)
 
         self._trained = True
         idx = 0
@@ -252,8 +255,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
             # iterate over the data
             for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
                 x = x.to(device)
-                states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \
-                    else self._forward(x)[0].cpu().numpy()
+                states[idx:idx + batch_size] = self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[1].cpu().numpy()\
+                    if use_last_state else self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[0].cpu().numpy()
                 ys[idx:idx + batch_size] = y.numpy()
                 idx += batch_size
 
@@ -294,8 +297,6 @@ class DeepEchoStateNetwork(torch.nn.Module):
                 raise ValueError('Standardization is enabled but the model has not been fitted yet.')
 
         batch_size = data.batch_size
-        self._reset_state(batch_size, device)
-
         num_batches = len(data)
         state_size = self._total_units
 
@@ -305,16 +306,18 @@ class DeepEchoStateNetwork(torch.nn.Module):
         target_attr = getattr(dataset, 'target', None)
         if data_attr is None or target_attr is None:
             raise AttributeError('Dataset does not have the required attributes `data` and `target`.')
-        states = np.empty((num_batches * batch_size, data_attr.shape[1] - self._initial_transients,
+        seq_len = data_attr.shape[1]
+        states = np.empty((num_batches * batch_size, seq_len - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
         ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32, order='F')
+        self._reset_state(batch_size, seq_len, device)
 
         idx = 0
         for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
             x = x.to(device)
-            states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \
-                else self._forward(x)[0].cpu().numpy()
+            states[idx:idx + batch_size] = self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[1].cpu().numpy()\
+                if use_last_state else self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[0].cpu().numpy()
             ys[idx:idx + batch_size] = y.numpy()
             idx += batch_size
 
@@ -350,8 +353,6 @@ class DeepEchoStateNetwork(torch.nn.Module):
                                  'with standardize=True first.')
 
         batch_size = data.batch_size
-        self._reset_state(batch_size, device)
-
         num_batches = len(data)
         state_size = self._total_units
 
@@ -360,16 +361,18 @@ class DeepEchoStateNetwork(torch.nn.Module):
         data_attr = getattr(dataset, 'data', None)
         if data_attr is None:
             raise AttributeError('Dataset does not have the required attributes `data`.')
-        states = np.empty((num_batches * batch_size, data_attr.shape[1] - self._initial_transients,
+        seq_len = data_attr.shape[1]
+        states = np.empty((num_batches * batch_size, seq_len - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
+        self._reset_state(batch_size, seq_len, device)
 
         idx = 0
         # iterate over the data
         for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
             x = x.to(device)
-            states[idx:idx + batch_size] = self._forward(x)[1].cpu().numpy() if use_last_state \
-                else self._forward(x)[0].cpu().numpy()
+            states[idx:idx + batch_size] = self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[1].cpu().numpy()\
+                if use_last_state else self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[0].cpu().numpy()
             idx += batch_size
 
         if not use_last_state:

@@ -110,8 +110,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         """
 
         super().__init__()
-        self._input_to_all_non_linear = input_to_all_non_linear
-        self._input_to_all_memory = input_to_all_memory
         self._total_non_linear_units = total_non_linear_units
         self._total_memory_units = total_memory_units
         self._initial_transients = initial_transients
@@ -240,8 +238,13 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             else:
                 self.readout = LinearRegression()
         self._trained = False
+        self._memory_states = None
+        self._non_linear_states = None
+        self._concatenate_memory_input = [input_to_all_memory and idx > 0 for idx in range(number_of_memory_layers)]
+        self._concatenate_non_linear_input = [input_to_all_non_linear and idx > 0
+                                              for idx in range(number_of_non_linear_layers)]
 
-    def _reset_state(self, batch_size: int, device: torch.device) -> None:
+    def _reset_state(self, batch_size: int, seq_len, device: torch.device) -> None:
         """
         Resets the internal state of the reservoir.
 
@@ -254,6 +257,18 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         if not self._just_memory:
             for non_linear_layer in self.non_linear_layers:
                 non_linear_layer.reset_state(batch_size, device)
+
+        # Pre-allocate non_linear_states and memory_states
+        self._non_linear_states = [
+            torch.empty((batch_size, seq_len, layer.non_linear_kernel.shape[0]),
+                        device=device, requires_grad=False, dtype=torch.float32)
+            for layer in self.non_linear_layers
+        ]
+        self._memory_states = [
+            torch.empty((batch_size, seq_len, layer.memory_kernel.shape[0]),
+                        device=device, requires_grad=False, dtype=torch.float32)
+            for layer in self.memory_layers
+        ]
 
     def _forward(self, x: torch.Tensor) \
             -> tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
@@ -268,57 +283,62 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
 
         seq_len = x.shape[1]
 
-        memory_states = []
-
         # iterate over the memory layers and compute the states
         last_memory_state = x
-        x_is_dim2 = x.dim() == 2
         for idx, memory_layer in enumerate(self.memory_layers):
-            layer_states = torch.empty((x.shape[0], seq_len, memory_layer.memory_kernel.shape[0]),
-                                       device=x.device, requires_grad=False, dtype=torch.float32)
-            is_dim2 = last_memory_state.dim() == 2
-            concatenate_state_input = self._input_to_all_memory and idx > 0
-            for t in range(seq_len):
-                last_state_t = last_memory_state[:, t].unsqueeze(1) if is_dim2 else last_memory_state[:, t]
-                if concatenate_state_input:
-                    xt = x[:, t].unsqueeze(1) if x_is_dim2 else x[:, t]
-                    last_state_t = torch.cat([last_state_t, xt], dim=-1)
-                layer_states[:, t, :].copy_(memory_layer(last_state_t))
-            memory_states.append(layer_states)
+            layer_states = self._memory_states[idx]
+            if self._concatenate_memory_input[idx]:
+                for t in range(seq_len):
+                    (layer_states[:, t, :].copy_
+                     (memory_layer(torch.cat([last_memory_state[:, t], x[:, t]], dim=-1))))
+            else:
+                for t in range(seq_len):
+                    layer_states[:, t, :].copy_(memory_layer(last_memory_state[:, t]))
             last_memory_state = layer_states
 
         # iterate over the non-linear layers and compute the states
         if not self._just_memory:
-            non_linear_states = []
             last_non_linear_state = x
             for idx, non_linear_layer in enumerate(self.non_linear_layers):
-                layer_states = torch.empty((x.shape[0], seq_len, non_linear_layer.non_linear_kernel.shape[0]),
-                                           device=x.device, requires_grad=False, dtype=torch.float32)
-                is_dim2 = last_non_linear_state.dim() == 2
-                concatenate_state_input = self._input_to_all_non_linear and idx > 0
-                for t in range(seq_len):
-                    last_state_t = last_non_linear_state[:, t].unsqueeze(1) if is_dim2 else last_non_linear_state[:, t]
-                    if concatenate_state_input:
-                        xt = x[:, t].unsqueeze(1) if x_is_dim2 else x[:, t]
-                        last_state_t = torch.cat([last_state_t, xt], dim=-1)
-                    # just the first non-linear layer receives the last memory state (default deep architecture)
-                    if idx == 0:
-                        layer_states[:, t, :].copy_(non_linear_layer(last_state_t, last_memory_state[:, t, :]))
+                layer_states = self._non_linear_states[idx]
+                # just the first non-linear layer receives the last memory state (default deep architecture)
+                if idx == 0:
+                    if self._concatenate_non_linear_input[idx]:
+                        for t in range(seq_len):
+                            layer_states[:, t, :].copy_(
+                                non_linear_layer(
+                                    torch.cat([last_non_linear_state[:, t], x[:, t]], dim=-1),
+                                    last_memory_state[:, t, :])
+                            )
                     else:
-                        layer_states[:, t, :].copy_(non_linear_layer(last_state_t))
-                non_linear_states.append(layer_states)
+                        for t in range(seq_len):
+                            layer_states[:, t, :].copy_(
+                                non_linear_layer(last_non_linear_state[:, t], last_memory_state[:, t, :])
+                            )
+                else:
+                    if self._concatenate_non_linear_input[idx]:
+                        for t in range(seq_len):
+                            layer_states[:, t, :].copy_(
+                                non_linear_layer(
+                                    torch.cat([last_non_linear_state[:, t], x[:, t]], dim=-1))
+                            )
+                    else:
+                        for t in range(seq_len):
+                            layer_states[:, t, :].copy_(
+                                non_linear_layer(last_non_linear_state[:, t])
+                            )
                 last_non_linear_state = layer_states
 
         if not self._just_memory:
             if self._concatenate_non_linear:
-                non_linear_states = torch.cat(non_linear_states, dim=-1)
+                non_linear_states = torch.cat(self._non_linear_states, dim=-1)
             else:
-                non_linear_states = non_linear_states[-1]
+                non_linear_states = self._non_linear_states[-1]
 
         if self._concatenate_memory:
-            memory_states = torch.cat(memory_states, dim=-1)
+            memory_states = torch.cat(self._memory_states, dim=-1)
         else:
-            memory_states = memory_states[-1]
+            memory_states = self._memory_states[-1]
 
         if not self._just_memory:
             return (non_linear_states[:, self._initial_transients:, :], non_linear_states[:, -1, :],
@@ -340,8 +360,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         """
 
         batch_size = data.batch_size
-        self._reset_state(batch_size, device)
-
         num_batches = len(data)
         state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
 
@@ -351,18 +369,20 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         target_attr = getattr(dataset, 'target', None)
         if data_attr is None or target_attr is None:
             raise AttributeError('Dataset does not have the required attributes `data` and `target`.')
-        states = np.empty((num_batches * batch_size, data_attr.shape[1] - self._initial_transients,
+        seq_len = data_attr.shape[1]
+        states = np.empty((num_batches * batch_size, seq_len - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
         ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32, order='F')
+        self._reset_state(batch_size, seq_len, device)
 
         self._trained = True
         idx = 0
         try:
             for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
                 x = x.to(device)
-                states[idx:idx + batch_size] = self._forward(x)[3 if self._just_memory else 1].cpu().numpy() \
-                    if use_last_state else self._forward(x)[2 if self._just_memory else 0].cpu().numpy()
+                states[idx:idx + batch_size] = self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[3 if self._just_memory else 1].cpu().numpy() \
+                    if use_last_state else self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[2 if self._just_memory else 0].cpu().numpy()
                 ys[idx:idx + batch_size] = y.numpy()
                 idx += batch_size
 
@@ -402,8 +422,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                 raise ValueError('Standardization is enabled but the model has not been fitted yet.')
 
         batch_size = data.batch_size
-        self._reset_state(batch_size, device)
-
         num_batches = len(data)
         state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
 
@@ -413,16 +431,18 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         target_attr = getattr(dataset, 'target', None)
         if data_attr is None or target_attr is None:
             raise AttributeError('Dataset does not have the required attributes `data` and `target`.')
-        states = np.empty((num_batches * batch_size, data_attr.shape[1] - self._initial_transients,
+        seq_len = data_attr.shape[1]
+        states = np.empty((num_batches * batch_size, seq_len - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
         ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32, order='F')
+        self._reset_state(batch_size, seq_len, device)
 
         idx = 0
         for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
             x = x.to(device)
-            states[idx:idx + batch_size] = self._forward(x)[3 if self._just_memory else 1].cpu().numpy() \
-                if use_last_state else self._forward(x)[2 if self._just_memory else 0].cpu().numpy()
+            states[idx:idx + batch_size] = self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[3 if self._just_memory else 1].cpu().numpy() \
+                if use_last_state else self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[2 if self._just_memory else 0].cpu().numpy()
             ys[idx:idx + batch_size] = y.numpy()
             idx += batch_size
 
@@ -457,8 +477,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                 raise ValueError('Standardization is enabled but the model has not been fitted yet.')
 
         batch_size = data.batch_size
-        self._reset_state(batch_size, device)
-
         num_batches = len(data)
         state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
 
@@ -467,15 +485,17 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         data_attr = getattr(dataset, 'data', None)
         if data_attr is None:
             raise AttributeError('Dataset does not have the required attributes `data`.')
-        states = np.empty((num_batches * batch_size, data_attr.shape[1] - self._initial_transients,
+        seq_len = data_attr.shape[1]
+        states = np.empty((num_batches * batch_size, seq_len - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
+        self._reset_state(batch_size, seq_len, device)
 
         idx = 0
         for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
             x = x.to(device)
-            states[idx:idx + batch_size] = self._forward(x)[3 if self._just_memory else 1].cpu().numpy() \
-                if use_last_state else self._forward(x)[2 if self._just_memory else 0].cpu().numpy()
+            states[idx:idx + batch_size] = self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[3 if self._just_memory else 1].cpu().numpy() \
+                if use_last_state else self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[2 if self._just_memory else 0].cpu().numpy()
             idx += batch_size
 
         if not use_last_state:
