@@ -1,4 +1,5 @@
 import torch
+import time
 
 from typing import Callable
 
@@ -118,8 +119,10 @@ class MemoryCell(torch.nn.Module):
         )
 
         self.memory_kernel = init_memory_kernel(memory_units, theta, legendre, memory_scaling)
+
+        self.register_buffer('_combined_kernel', torch.cat((self.memory_kernel, self.input_memory_kernel), dim=0))
+
         self._memory_state = None
-        self._out = None
 
     @torch.no_grad()
     def forward(self, xt: torch.Tensor) -> torch.FloatTensor:
@@ -132,8 +135,7 @@ class MemoryCell(torch.nn.Module):
         """
 
         # m(t) = Vm * m(t-1) + Vx * x(t)
-        self._memory_state = torch.addmm(torch.mm(xt, self.input_memory_kernel, out=self._out),
-                                         self._memory_state, self.memory_kernel)
+        self._memory_state = torch.mm(torch.cat((self._memory_state, xt), dim=1), self._combined_kernel)
 
         return self._memory_state
 
@@ -145,8 +147,6 @@ class MemoryCell(torch.nn.Module):
         :param device: The device to use.
         """
 
-        self._out = torch.empty((batch_size, self.memory_kernel.shape[0]), dtype=torch.float32,
-                                device=device, requires_grad=False)
         self._memory_state = torch.zeros((batch_size, self.memory_kernel.shape[0]), dtype=torch.float32,
                                          device=device, requires_grad=False)
 
@@ -262,7 +262,6 @@ class NonLinearCell(torch.nn.Module):
                 )
                 .mul_(self._leaky_rate)
             )
-
         else:
             # h(t) = (1 - a) * h(t-1) + a * f(Wx * h(t-1) + Wm * m(t) + Wx * x(t) + b)
             past_state = self._non_linear_state * self._one_minus_leaky_rate
