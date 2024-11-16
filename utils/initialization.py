@@ -179,36 +179,55 @@ def skewsymmetric(M: int, scaling: float = 1.0) -> torch.FloatTensor:
     return W.to_dense()
 
 
-def legendre_tensor_init(M: int, theta: float) -> torch.FloatTensor:
+def legendre_tensor_init(order: int, theta: float) -> torch.FloatTensor:
     """
-    Generate a dense matrix leveraging the Legendre polynomials.
-    The matrix is defined as: M_ij = -(2i + 1) / theta if i < j, else (2i + 1) / theta * (-1)^(i-j+1).
+    Generate discrete Legendre matrices of order `order` and scaled by `theta`.
+    This code derive from the LMU implementation: https://github.com/nengo/keras-lmu/blob/main/keras_lmu/layers.py
 
-    :param M: Number of hidden units.
-    :param theta: Scaling factor.
+    :param order: The number of degrees in the transfer function of the LTI system used to
+        represent the sliding window of history. This parameter sets the number of
+        Legendre polynomials used to orthogonally represent the sliding window.
+    :param theta: The number of timestamps in the sliding window that is represented using the
+        LTI system. In this context, the sliding window represents a dynamic range of
+        data, of fixed size, that will be used to predict the value at the next time
+        step. If this value is smaller than the size of the input sequence, only that
+        number of steps will be represented at the time of prediction, however the
+        entire sequence will still be processed in order for information to be
+        projected to and from the hidden layer. If ``trainable_theta`` is enabled, then
+        theta will be updated during the course of training.
 
-    :return: M x M matrix.
-    """
-
-    indices = torch.cartesian_prod(torch.arange(M), torch.arange(M))
-    values = torch.where(indices[:, 0] < indices[:, 1],
-                         -(2 * indices[:, 0] + 1) / theta,
-                         (2 * indices[:, 0] + 1) / theta * (-1) ** (indices[:, 0] - indices[:, 1] + 1))
-
-    return torch.sparse_coo_tensor(indices.T, values, (M, M), dtype=torch.float32, requires_grad=False).to_dense()
-
-
-def legendre_input_init(M: int, theta: float) -> torch.FloatTensor:
-    """
-    Generates an input kernel of size 1 x M using Legendre polynomials.
-
-    :param M: The number of hidden units.
-    :param theta: Scaling factor.
-    :return: 1 x M matrix.
+    :return: The Matrices A and B of the LTI system.
     """
 
-    return torch.tensor([((2 * i + 1) / theta) * (-1) ** i for i in range(M)],
-                        dtype=torch.float32, requires_grad=False).unsqueeze(0)
+    Q = torch.arange(order, dtype=torch.float32)
+    R = (2 * Q + 1).unsqueeze(1)
+    j, i = torch.meshgrid(Q, Q, indexing='ij')
+    A = torch.where(i < j, -1, (-1.0) ** (i - j + 1)) * R
+    B = (-1.0) ** Q.unsqueeze(1) * R
+
+    return continuous_to_discrete_zoh(A.T / theta, B.T / theta)
+
+
+def continuous_to_discrete_zoh(A, B):
+    """
+    Function to discretize A and B matrices using Zero Order Hold method.
+
+    Functionally equivalent to
+    ``scipy.signal.cont2discrete((A.T, B.T, _, _), method="zoh", dt=1.0)``.
+    """
+
+    # combine A/B and pad to make square matrix
+    em_upper = torch.cat([A, B], dim=0)
+    em = torch.nn.functional.pad(em_upper, (0, B.shape[0]))
+
+    # compute matrix exponential
+    ms = torch.matrix_exp(em)
+
+    # slice A/B back out of combined matrix
+    discrete_A = ms[: A.shape[0], : A.shape[1]]
+    discrete_B = ms[A.shape[0]:, : A.shape[1]]
+
+    return discrete_A, discrete_B
 
 
 def init_bias(bias: bool, non_linear_units: int, input_scaling: float, bias_scaling: float) -> torch.FloatTensor:
@@ -317,17 +336,7 @@ def init_input_kernel(input_units: int, units: int, input_connectivity: int, inp
     """
 
     if legendre_input and input_units == 1:
-        kernel = legendre_input_init(units, theta)
-        # Augment the block matrix for ZOH discretization
-        M = legendre_tensor_init(units, theta)
-        block_matrix = torch.zeros((units + 1, units + 1), dtype=torch.float32)
-        block_matrix[1:, 1:] = M                  # Memory dynamics
-        block_matrix[1:, 0] = kernel.squeeze()    # Input influence on memory
-
-        # Compute matrix exponential for ZOH discretization
-        block_matrix_exp = torch.matrix_exp(block_matrix)
-        # Extract the ZOH discretized input kernel from the first column
-        kernel = block_matrix_exp[1:, 0].unsqueeze(0)
+        _, kernel = legendre_tensor_init(units, theta)
     else:
         if legendre_input and input_units > 1:
             import warnings
@@ -351,7 +360,7 @@ def init_memory_kernel(memory_units: int, theta: float, legendre: bool, scaling:
     """
 
     if legendre:
-        M = legendre_tensor_init(memory_units, theta)
-        return torch.nn.Parameter(torch.matrix_exp(M), requires_grad=False)
-    kernel = circular_tensor_init(memory_units, distribution='fixed', scaling=scaling)
+        kernel, _ = legendre_tensor_init(memory_units, theta)
+    else:
+        kernel = circular_tensor_init(memory_units, distribution='fixed', scaling=scaling)
     return torch.nn.Parameter(kernel, requires_grad=False)
