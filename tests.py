@@ -12,10 +12,15 @@ from reservoir_memory_network import DeepReservoirMemoryNetwork
 from datasets import SequentialMNIST, MemoryCapacity, MG17
 from utils.test_sequential_mnist import test_sequential_mnist
 from utils.test_mg17 import test_mg17
+from utils.test_mg30 import test_mg30
 from utils.test_memory_capacity import test_memory_capacity
 
 import warnings
 import sklearn
+
+import torch._inductor.config as config
+
+config.cpp_wrapper = True
 
 # Disable all warnings from sklearn
 warnings.filterwarnings("ignore", module="sklearn")
@@ -45,10 +50,6 @@ elif jemalloc_path:
     os.environ['LD_PRELOAD'] = f'{jemalloc_path}:' + os.environ.get('LD_PRELOAD', '')
 elif tcmalloc_path:
     os.environ['LD_PRELOAD'] = f'{tcmalloc_path}:' + os.environ.get('LD_PRELOAD', '')
-
-import torch._inductor.config as config
-
-config.cpp_wrapper = True
 
 
 def generate_results_path(model_name, dataset_name, number_of_layers, non_linear_units, memory_units, euler,
@@ -244,7 +245,7 @@ if __name__ == '__main__':
 
     if dataset_name == 'sequential_mnist':
         task = 'classification'
-    elif dataset_name == 'memory_capacity' or dataset_name == 'mg17':
+    elif dataset_name == 'memory_capacity' or dataset_name == 'mg17' or dataset_name == 'mg30':
         task = 'regression'
 
     if not os.path.exists('./results'):
@@ -272,8 +273,6 @@ if __name__ == '__main__':
                            'input_units': input_units,
                            'non_linear_units': non_linear_units,
 
-                           'input_non_linear_scaling': input_non_linear_scaling,
-
                            'input_non_linear_connectivity': input_non_linear_connectivity,
                            'non_linear_connectivity': non_linear_connectivity,
 
@@ -285,6 +284,8 @@ if __name__ == '__main__':
                            'tolerance': tolerance,
                            'initial_transients': initial_transients,
                            }
+        if distribution == 'uniform':
+            hyperparameters['input_non_linear_scaling'] = input_non_linear_scaling
         if not euler:
             hyperparameters['spectral_radius'] = spectral_radius
             hyperparameters['leaky_rate'] = leaky_rate
@@ -365,11 +366,6 @@ if __name__ == '__main__':
                            'non_linear_units': non_linear_units,
                            'memory_units': memory_units,
 
-                           'memory_scaling': memory_scaling,
-                           'input_memory_scaling': input_memory_scaling,
-                           'input_non_linear_scaling': input_non_linear_scaling,
-                           'memory_non_linear_scaling': memory_non_linear_scaling,
-
                            'input_memory_connectivity': input_memory_connectivity,
                            'input_non_linear_connectivity': input_non_linear_connectivity,
                            'non_linear_connectivity': non_linear_connectivity,
@@ -383,6 +379,13 @@ if __name__ == '__main__':
                            'tolerance': tolerance,
                            'initial_transients': initial_transients,
                            }
+        if not legendre_memory:
+            hyperparameters['memory_scaling'] = memory_scaling
+        if distribution == 'uniform' and not legendre_input:
+            hyperparameters['input_memory_scaling'] = input_memory_scaling
+        if distribution == 'uniform':
+            hyperparameters['input_non_linear_scaling'] = input_non_linear_scaling
+            hyperparameters['memory_non_linear_scaling'] = memory_non_linear_scaling
         if not euler:
             hyperparameters['spectral_radius'] = spectral_radius
             hyperparameters['leaky_rate'] = leaky_rate
@@ -474,3 +477,5 @@ if __name__ == '__main__':
 
     elif dataset_name == 'mg17':
         test_mg17(model, results_path, hyperparameters, use_last_state, device, initial_transients)
+    elif dataset_name == 'mg30':
+        test_mg30(model, results_path, hyperparameters, use_last_state, device, initial_transients)
