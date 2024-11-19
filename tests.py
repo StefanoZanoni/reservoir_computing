@@ -14,6 +14,7 @@ from utils.test_sequential_mnist import test_sequential_mnist
 from utils.test_mg17 import test_mg17
 from utils.test_mg30 import test_mg30
 from utils.test_memory_capacity import test_memory_capacity
+from utils.save_results import save_results
 
 import warnings
 import sklearn
@@ -65,6 +66,226 @@ def generate_results_path(model_name, dataset_name, number_of_layers, non_linear
         else:
             return base_path + f'{memory_units}m{memory_type}_{non_linear_units}nl{euler_suffix}/'
     return base_path
+
+
+def create_model(args, device):
+    if args.dataset == 'sequential_mnist':
+        task = 'classification'
+    elif args.dataset == 'memory_capacity' or args.dataset == 'mg17' or args.dataset == 'mg30':
+        task = 'regression'
+
+    if args.model == 'esn':
+        model = DeepEchoStateNetwork(
+            task,
+            args.input_units,
+            args.non_linear_units,
+            number_of_layers=args.number_of_non_linear_layers,
+            concatenate=args.concatenate_non_linear,
+            input_scaling=args.input_non_linear_scaling,
+            recurrent_scaling=args.non_linear_scaling,
+            inter_scaling=args.inter_non_linear_scaling,
+            spectral_radius=args.spectral_radius,
+            leaky_rate=args.leaky_rate,
+            effective_rescaling=args.effective_rescaling,
+            input_connectivity=args.input_non_linear_connectivity,
+            recurrent_connectivity=args.non_linear_connectivity,
+            inter_connectivity=args.inter_non_linear_connectivity,
+            bias=args.bias,
+            bias_scaling=args.bias_scaling,
+            distribution=args.distribution,
+            signs_from=args.signs_from,
+            fixed_input_kernel=args.fixed_input_kernels,
+            non_linearity=args.non_linearity,
+            circular_recurrent_kernel=args.circular_non_linear,
+            euler=args.euler,
+            epsilon=args.epsilon,
+            gamma=args.gamma,
+            alpha=args.alpha,
+            max_iter=args.max_iter,
+            tolerance=args.tolerance,
+            initial_transients=args.initial_transients,
+            input_to_all=args.input_to_all_non_linear,
+        ).to(device)
+
+        hyperparameters = {'validation_ratio': args.validation_ratio,
+                           'training_batch_size': args.batch_training,
+                           'validation_batch_size': args.batch_validation,
+                           'testing_batch_size': args.batch_testing,
+
+                           'number_of_non_linear_layers': args.number_of_non_linear_layers,
+
+                           'input_units': args.input_units,
+                           'non_linear_units': args.non_linear_units,
+
+                           'input_non_linear_connectivity': args.input_non_linear_connectivity,
+                           'non_linear_connectivity': args.non_linear_connectivity,
+
+                           'distribution': args.distribution,
+                           'non_linearity': args.non_linearity,
+
+                           'alpha': args.alpha,
+                           'max_iter': args.max_iter,
+                           'tolerance': args.tolerance,
+                           'initial_transients': args.initial_transients,
+                           }
+        if args.distribution == 'uniform':
+            hyperparameters['input_non_linear_scaling'] = args.input_non_linear_scaling
+        if not args.euler:
+            hyperparameters['spectral_radius'] = args.spectral_radius
+            hyperparameters['leaky_rate'] = args.leaky_rate
+        if args.concatenate_non_linear:
+            hyperparameters['concatenate_non_linear'] = True
+        if args.input_to_all_non_linear:
+            hyperparameters['input_to_all_non_linear'] = True
+        if args.effective_rescaling:
+            hyperparameters['effective_rescaling'] = True
+        if args.bias:
+            hyperparameters['bias'] = True
+            if bias_scaling is None:
+                hyperparameters['bias_scaling'] = args.input_non_linear_scaling
+            else:
+                hyperparameters['bias_scaling'] = args.bias_scaling
+        if args.fixed_input_kernel:
+            hyperparameters['fixed_input_kernel'] = True
+            hyperparameters['signs_from'] = args.signs_from
+        if args.circular_non_linear:
+            hyperparameters['circular_non_linear'] = True
+        if args.euler:
+            hyperparameters['euler'] = True
+            hyperparameters['epsilon'] = args.epsilon
+            hyperparameters['gamma'] = args.gamma
+            hyperparameters['non_linear_scaling'] = args.non_linear_scaling
+        if args.number_of_non_linear_layers > 1:
+            hyperparameters['inter_non_linear_scaling'] = args.inter_non_linear_scaling
+            hyperparameters['inter_non_linear_connectivity'] = args.inter_non_linear_connectivity
+    elif args.model == 'rmn':
+        model = DeepReservoirMemoryNetwork(
+            task,
+            args.input_units,
+            args.non_linear_units,
+            args.memory_units,
+            number_of_non_linear_layers=args.number_of_non_linear_layers,
+            number_of_memory_layers=args.number_of_memory_layers,
+            initial_transients=args.initial_transients,
+            memory_scaling=args.memory_scaling,
+            non_linear_scaling=args.non_linear_scaling,
+            input_memory_scaling=args.input_memory_scaling,
+            input_non_linear_scaling=args.input_non_linear_scaling,
+            memory_non_linear_scaling=args.memory_non_linear_scaling,
+            inter_non_linear_scaling=args.inter_non_linear_scaling,
+            inter_memory_scaling=args.inter_memory_scaling,
+            spectral_radius=args.spectral_radius,
+            leaky_rate=args.leaky_rate,
+            input_memory_connectivity=args.input_memory_connectivity,
+            input_non_linear_connectivity=args.input_non_linear_connectivity,
+            non_linear_connectivity=args.non_linear_connectivity,
+            memory_non_linear_connectivity=args.memory_non_linear_connectivity,
+            inter_non_linear_connectivity=args.inter_non_linear_connectivity,
+            inter_memory_connectivity=args.inter_memory_connectivity,
+            bias=args.bias,
+            bias_scaling=args.bias_scaling,
+            distribution=args.distribution,
+            signs_from=args.signs_from,
+            fixed_input_kernel=args.fixed_input_kernels,
+            non_linearity=args.non_linearity,
+            effective_rescaling=args.effective_rescaling,
+            concatenate_non_linear=args.concatenate_non_linear,
+            concatenate_memory=args.concatenate_memory,
+            circular_non_linear_kernel=args.circular_non_linear,
+            euler=args.euler,
+            epsilon=args.epsilon,
+            gamma=args.gamma,
+            alpha=args.alpha,
+            max_iter=args.max_iter,
+            tolerance=args.tolerance,
+            legendre=args.legendre_memory,
+            legendre_input=args.legendre_input,
+            theta=args.theta,
+            just_memory=args.just_memory,
+            input_to_all_non_linear=args.input_to_all_non_linear,
+            input_to_all_memory=args.input_to_all_memory,
+        ).to(device)
+
+        hyperparameters = {'validation_ratio': args.validation_ratio,
+                           'training_batch_size': args.batch_training,
+                           'validation_batch_size': args.batch_validation,
+                           'testing_batch_size': args.batch_testing,
+
+                           'number_of_non_linear_layers': args.number_of_non_linear_layers,
+                           'number_of_memory_layers': args.number_of_memory_layers,
+
+                           'input_units': args.input_units,
+                           'non_linear_units': args.non_linear_units,
+                           'memory_units': args.memory_units,
+
+                           'input_memory_connectivity': args.input_memory_connectivity,
+                           'input_non_linear_connectivity': args.input_non_linear_connectivity,
+                           'non_linear_connectivity': args.non_linear_connectivity,
+                           'memory_non_linear_connectivity': args.memory_non_linear_connectivity,
+
+                           'distribution': args.distribution,
+                           'non_linearity': args.non_linearity,
+
+                           'alpha': args.alpha,
+                           'max_iter': args.max_iter,
+                           'tolerance': args.tolerance,
+                           'initial_transients': args.initial_transients,
+                           }
+        if not args.legendre_memory:
+            hyperparameters['memory_scaling'] = args.memory_scaling
+        if args.distribution == 'uniform' and not args.legendre_input:
+            hyperparameters['input_memory_scaling'] = args.input_memory_scaling
+        if args.distribution == 'uniform':
+            hyperparameters['input_non_linear_scaling'] = args.input_non_linear_scaling
+            hyperparameters['memory_non_linear_scaling'] = args.memory_non_linear_scaling
+        if not args.euler:
+            hyperparameters['spectral_radius'] = args.spectral_radius
+            hyperparameters['leaky_rate'] = args.leaky_rate
+        if args.concatenate_non_linear and not args.just_memory:
+            hyperparameters['concatenate_non_linear'] = True
+        if args.input_to_all_non_linear and not args.just_memory:
+            hyperparameters['input_to_all_non_linear'] = True
+        if args.effective_rescaling and not args.just_memory:
+            hyperparameters['effective_rescaling'] = True
+        if args.bias and not args.just_memory:
+            hyperparameters['bias'] = True
+            if args.bias_scaling is None:
+                hyperparameters['bias_scaling'] = args.input_non_linear_scaling
+            else:
+                hyperparameters['bias_scaling'] = args.bias_scaling
+        if args.fixed_input_kernels:
+            hyperparameters['fixed_input_kernel'] = True
+            hyperparameters['signs_from'] = args.signs_from
+        if args.legendre_input:
+            hyperparameters['legendre_input'] = True
+            hyperparameters['theta'] = args.theta
+        if args.circular_non_linear:
+            hyperparameters['circular_non_linear'] = True
+        if args.euler:
+            hyperparameters['euler'] = True
+            hyperparameters['epsilon'] = args.epsilon
+            hyperparameters['gamma'] = args.gamma
+            hyperparameters['non_linear_scaling'] = args.non_linear_scaling
+
+        if args.concatenate_memory:
+            hyperparameters['concatenate_memory'] = True
+        if args.input_to_all_memory:
+            hyperparameters['input_to_all_memory'] = True
+        if args.legendre_memory:
+            hyperparameters['legendre_memory'] = True
+            hyperparameters['theta'] = theta
+        if args.just_memory:
+            hyperparameters['just_memory'] = True
+        if args.number_of_non_linear_layers > 1 and not args.just_memory:
+            hyperparameters['inter_non_linear_scaling'] = args.inter_non_linear_scaling
+            hyperparameters['inter_non_linear_connectivity'] = args.inter_non_linear_connectivity
+        if args.number_of_memory_layers > 1:
+            hyperparameters['inter_memory_scaling'] = args.inter_memory_scaling
+            hyperparameters['inter_memory_connectivity'] = args.inter_memory_connectivity
+    else:
+        raise ValueError(f"Unknown model type: {args.model}")
+
+    return model, hyperparameters
 
 
 if __name__ == '__main__':
@@ -173,61 +394,17 @@ if __name__ == '__main__':
     testing_batch_size = args.batch_testing
 
     number_of_non_linear_layers = args.number_of_non_linear_layers
-    number_of_memory_layers = args.number_of_memory_layers
-    concatenate_non_linear = args.concatenate_non_linear
-    concatenate_memory = args.concatenate_memory
 
-    input_units = args.input_units
     non_linear_units = args.non_linear_units
     memory_units = args.memory_units
-
-    non_linear_scaling = args.non_linear_scaling
-    memory_scaling = args.memory_scaling
-    input_non_linear_scaling = args.input_non_linear_scaling
-    input_memory_scaling = args.input_memory_scaling
-    memory_non_linear_scaling = args.memory_non_linear_scaling
-    inter_non_linear_scaling = args.inter_non_linear_scaling
-    inter_memory_scaling = args.inter_memory_scaling
-
-    spectral_radius = args.spectral_radius
-    leaky_rate = args.leaky_rate
-    effective_rescaling = args.effective_rescaling
-
-    input_non_linear_connectivity = args.input_non_linear_connectivity
-    non_linear_connectivity = args.non_linear_connectivity
-    memory_non_linear_connectivity = args.memory_non_linear_connectivity
-    input_memory_connectivity = args.input_memory_connectivity
-    inter_non_linear_connectivity = args.inter_non_linear_connectivity
-    inter_memory_connectivity = args.inter_memory_connectivity
-
-    bias = args.bias
-    bias_scaling = args.bias_scaling
-
-    distribution = args.distribution
-    signs_from = args.signs_from
-    fixed_input_kernel = args.fixed_input_kernels
-    legendre_input = args.legendre_input
-    non_linearity = args.non_linearity
-    circular_non_linear = args.circular_non_linear
-    input_to_all_non_linear = args.input_to_all_non_linear
-    input_to_all_memory = args.input_to_all_memory
-
-    alpha = args.alpha
-    max_iter = args.max_iter
-    initial_transients = args.initial_transients
-    tolerance = args.tolerance
-
-    euler = args.euler
-    epsilon = args.epsilon
-    gamma = args.gamma
-
-    legendre_memory = args.legendre_memory
-    chebyshev_memory = args.chebyshev_memory
-    theta = args.theta
 
     use_last_state = args.use_last_state
     seed = args.seed
     just_memory = args.just_memory
+
+    euler = args.euler
+    legendre_memory = args.legendre_memory
+    chebyshev_memory = args.chebyshev_memory
 
     runs = args.runs
 
@@ -243,11 +420,6 @@ if __name__ == '__main__':
         if torch.backends.mps.is_available():
             torch.mps.manual_seed(seed)
 
-    if dataset_name == 'sequential_mnist':
-        task = 'classification'
-    elif dataset_name == 'memory_capacity' or dataset_name == 'mg17' or dataset_name == 'mg30':
-        task = 'regression'
-
     if not os.path.exists('./results'):
         os.makedirs('./results')
     if not os.path.exists(f'./results/{model_name}'):
@@ -261,208 +433,20 @@ if __name__ == '__main__':
     if not os.path.exists(results_path):
         os.makedirs(results_path)
 
-    # choose model
-    if model_name == 'esn':
-        hyperparameters = {'validation_ratio': validation_ratio,
-                           'training_batch_size': training_batch_size,
-                           'validation_batch_size': validation_batch_size,
-                           'testing_batch_size': testing_batch_size,
-
-                           'number_of_non_linear_layers': number_of_non_linear_layers,
-
-                           'input_units': input_units,
-                           'non_linear_units': non_linear_units,
-
-                           'input_non_linear_connectivity': input_non_linear_connectivity,
-                           'non_linear_connectivity': non_linear_connectivity,
-
-                           'distribution': distribution,
-                           'non_linearity': non_linearity,
-
-                           'alpha': alpha,
-                           'max_iter': max_iter,
-                           'tolerance': tolerance,
-                           'initial_transients': initial_transients,
-                           }
-        if distribution == 'uniform':
-            hyperparameters['input_non_linear_scaling'] = input_non_linear_scaling
-        if not euler:
-            hyperparameters['spectral_radius'] = spectral_radius
-            hyperparameters['leaky_rate'] = leaky_rate
-        if concatenate_non_linear:
-            hyperparameters['concatenate_non_linear'] = True
-        if input_to_all_non_linear:
-            hyperparameters['input_to_all_non_linear'] = True
-        if effective_rescaling:
-            hyperparameters['effective_rescaling'] = True
-        if bias:
-            hyperparameters['bias'] = True
-            if bias_scaling is None:
-                hyperparameters['bias_scaling'] = input_non_linear_scaling
-            else:
-                hyperparameters['bias_scaling'] = bias_scaling
-        if fixed_input_kernel:
-            hyperparameters['fixed_input_kernel'] = True
-            hyperparameters['signs_from'] = signs_from
-        if circular_non_linear:
-            hyperparameters['circular_non_linear'] = True
-        if euler:
-            hyperparameters['euler'] = True
-            hyperparameters['epsilon'] = epsilon
-            hyperparameters['gamma'] = gamma
-            hyperparameters['non_linear_scaling'] = non_linear_scaling
-        if number_of_non_linear_layers > 1:
-            hyperparameters['inter_non_linear_scaling'] = inter_non_linear_scaling
-            hyperparameters['inter_non_linear_connectivity'] = inter_non_linear_connectivity
-
-        model = DeepEchoStateNetwork(task,
-                                     input_units,
-                                     non_linear_units,
-
-                                     number_of_layers=number_of_non_linear_layers,
-                                     concatenate=concatenate_non_linear,
-
-                                     input_scaling=input_non_linear_scaling,
-                                     recurrent_scaling=non_linear_scaling,
-                                     inter_scaling=inter_non_linear_scaling,
-
-                                     spectral_radius=spectral_radius,
-                                     leaky_rate=leaky_rate,
-                                     effective_rescaling=effective_rescaling,
-
-                                     input_connectivity=input_non_linear_connectivity,
-                                     recurrent_connectivity=non_linear_connectivity,
-                                     inter_connectivity=inter_non_linear_connectivity,
-
-                                     bias=bias,
-                                     bias_scaling=bias_scaling,
-
-                                     distribution=distribution,
-                                     signs_from=signs_from,
-                                     fixed_input_kernel=fixed_input_kernel,
-                                     non_linearity=non_linearity,
-                                     circular_recurrent_kernel=circular_non_linear,
-
-                                     euler=euler,
-                                     epsilon=epsilon,
-                                     gamma=gamma,
-
-                                     alpha=alpha,
-                                     max_iter=max_iter,
-                                     tolerance=tolerance,
-                                     initial_transients=initial_transients,
-                                     input_to_all=input_to_all_non_linear,
-                                     ).to(device)
-    elif model_name == 'rmn':
-        hyperparameters = {'validation_ratio': validation_ratio,
-                           'training_batch_size': training_batch_size,
-                           'validation_batch_size': validation_batch_size,
-                           'testing_batch_size': testing_batch_size,
-
-                           'number_of_non_linear_layers': number_of_non_linear_layers,
-                           'number_of_memory_layers': number_of_memory_layers,
-
-                           'input_units': input_units,
-                           'non_linear_units': non_linear_units,
-                           'memory_units': memory_units,
-
-                           'input_memory_connectivity': input_memory_connectivity,
-                           'input_non_linear_connectivity': input_non_linear_connectivity,
-                           'non_linear_connectivity': non_linear_connectivity,
-                           'memory_non_linear_connectivity': memory_non_linear_connectivity,
-
-                           'distribution': distribution,
-                           'non_linearity': non_linearity,
-
-                           'alpha': alpha,
-                           'max_iter': max_iter,
-                           'tolerance': tolerance,
-                           'initial_transients': initial_transients,
-                           }
-        if not legendre_memory:
-            hyperparameters['memory_scaling'] = memory_scaling
-        if distribution == 'uniform' and not legendre_input:
-            hyperparameters['input_memory_scaling'] = input_memory_scaling
-        if distribution == 'uniform':
-            hyperparameters['input_non_linear_scaling'] = input_non_linear_scaling
-            hyperparameters['memory_non_linear_scaling'] = memory_non_linear_scaling
-        if not euler:
-            hyperparameters['spectral_radius'] = spectral_radius
-            hyperparameters['leaky_rate'] = leaky_rate
-        if concatenate_non_linear and not just_memory:
-            hyperparameters['concatenate_non_linear'] = True
-        if input_to_all_non_linear and not just_memory:
-            hyperparameters['input_to_all_non_linear'] = True
-        if effective_rescaling and not just_memory:
-            hyperparameters['effective_rescaling'] = True
-        if bias and not just_memory:
-            hyperparameters['bias'] = True
-            if bias_scaling is None:
-                hyperparameters['bias_scaling'] = input_non_linear_scaling
-            else:
-                hyperparameters['bias_scaling'] = bias_scaling
-        if fixed_input_kernel:
-            hyperparameters['fixed_input_kernel'] = True
-            hyperparameters['signs_from'] = signs_from
-        if legendre_input:
-            hyperparameters['legendre_input'] = True
-            hyperparameters['theta'] = theta
-        if circular_non_linear:
-            hyperparameters['circular_non_linear'] = True
-        if euler:
-            hyperparameters['euler'] = True
-            hyperparameters['epsilon'] = epsilon
-            hyperparameters['gamma'] = gamma
-            hyperparameters['non_linear_scaling'] = non_linear_scaling
-
-        if concatenate_memory:
-            hyperparameters['concatenate_memory'] = True
-        if input_to_all_memory:
-            hyperparameters['input_to_all_memory'] = True
-        if legendre_memory:
-            hyperparameters['legendre_memory'] = True
-            hyperparameters['theta'] = theta
-        if just_memory:
-            hyperparameters['just_memory'] = True
-        if number_of_non_linear_layers > 1 and not just_memory:
-            hyperparameters['inter_non_linear_scaling'] = inter_non_linear_scaling
-            hyperparameters['inter_non_linear_connectivity'] = inter_non_linear_connectivity
-        if number_of_memory_layers > 1:
-            hyperparameters['inter_memory_scaling'] = inter_memory_scaling
-            hyperparameters['inter_memory_connectivity'] = inter_memory_connectivity
-
-        model = DeepReservoirMemoryNetwork(task, input_units, non_linear_units, memory_units,
-                                           number_of_non_linear_layers=number_of_non_linear_layers,
-                                           number_of_memory_layers=number_of_memory_layers,
-                                           initial_transients=initial_transients,
-                                           memory_scaling=memory_scaling, non_linear_scaling=non_linear_scaling,
-                                           input_memory_scaling=input_memory_scaling,
-                                           input_non_linear_scaling=input_non_linear_scaling,
-                                           memory_non_linear_scaling=memory_non_linear_scaling,
-                                           inter_non_linear_scaling=inter_non_linear_scaling,
-                                           inter_memory_scaling=inter_memory_scaling, spectral_radius=spectral_radius,
-                                           leaky_rate=leaky_rate, input_memory_connectivity=input_memory_connectivity,
-                                           input_non_linear_connectivity=input_non_linear_connectivity,
-                                           non_linear_connectivity=non_linear_connectivity,
-                                           memory_non_linear_connectivity=memory_non_linear_connectivity,
-                                           inter_non_linear_connectivity=inter_non_linear_connectivity,
-                                           inter_memory_connectivity=inter_memory_connectivity, bias=bias,
-                                           bias_scaling=bias_scaling, distribution=distribution, signs_from=signs_from,
-                                           fixed_input_kernel=fixed_input_kernel,
-                                           non_linearity=non_linearity, effective_rescaling=effective_rescaling,
-                                           concatenate_non_linear=concatenate_non_linear,
-                                           concatenate_memory=concatenate_memory,
-                                           circular_non_linear_kernel=circular_non_linear, euler=euler, epsilon=epsilon,
-                                           gamma=gamma, alpha=alpha, max_iter=max_iter, tolerance=tolerance,
-                                           legendre=legendre_memory, legendre_input=legendre_input, theta=theta,
-                                           just_memory=just_memory, input_to_all_non_linear=input_to_all_non_linear,
-                                           input_to_all_memory=input_to_all_memory).to(device)
-
     # choose a task
     if dataset_name == 'sequential_mnist':
 
-        test_sequential_mnist(model, results_path, hyperparameters, validation_ratio, training_batch_size,
-                              validation_batch_size, testing_batch_size, use_last_state, device)
+        test_scores, validation_scores = [], []
+        for run in range(runs):
+            model, hyperparameters = create_model(args, device)
+            validation_score, test_score = test_sequential_mnist(model, validation_ratio, training_batch_size,
+                                                                 validation_batch_size,
+                                                                 testing_batch_size, use_last_state, device)
+            test_scores.append(test_score)
+            validation_scores.append(validation_score)
+
+        save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
+                     np.mean(test_scores), np.std(test_scores), 'accuracy', 'greater')
 
     elif dataset_name == 'memory_capacity':
         if model_name == 'esn':
@@ -476,6 +460,25 @@ if __name__ == '__main__':
                              initial_transients)
 
     elif dataset_name == 'mg17':
-        test_mg17(model, results_path, hyperparameters, use_last_state, device, initial_transients)
+
+        test_scores, validation_scores = [], []
+        for _ in range(runs):
+            model, hyperparameters = create_model(args, device)
+            validation_score, test_score = test_mg17(model, use_last_state, device, initial_transients)
+            test_scores.append(test_score)
+            validation_scores.append(validation_score)
+
+        save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
+                     np.mean(test_scores), np.std(test_scores), 'mse', 'less')
+
     elif dataset_name == 'mg30':
-        test_mg30(model, results_path, hyperparameters, use_last_state, device, initial_transients)
+
+        test_scores, validation_scores = [], []
+        for _ in range(runs):
+            model, hyperparameters = create_model(args, device)
+            validation_score, test_score = test_mg30(model, use_last_state, device, initial_transients)
+            test_scores.append(test_score)
+            validation_scores.append(validation_score)
+
+        save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
+                     np.mean(test_scores), np.std(test_scores), 'mse', 'less')

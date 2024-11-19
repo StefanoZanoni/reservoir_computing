@@ -11,8 +11,8 @@ def mse(y_pred: np.ndarray[np.float32], y_true: np.ndarray[np.float32]) -> float
     return np.mean((y_pred.flatten() - y_true.flatten()) ** 2)
 
 
-def test_mg30(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, results_path: str,
-              hyperparameters: dict, use_last_state: bool, device: torch.device, initial_transients: int) -> None:
+def test_mg30(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, use_last_state: bool, device: torch.device,
+              initial_transients: int) -> tuple[float, float]:
 
     # training
     training_data = MG30(training=True)
@@ -44,5 +44,4 @@ def test_mg30(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, results_
     test_score = model.score(testing_dataloader, mse, device, standardize=True, use_last_state=use_last_state,
                              disable_progress_bar=False)
 
-    save_results(results_path, hyperparameters, validation_score, 0,
-                 test_score, 0, 'mse', 'less')
+    return validation_score, test_score

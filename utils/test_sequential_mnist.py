@@ -4,7 +4,6 @@ import numpy as np
 from datasets import SequentialMNIST
 from torch.utils.data import random_split
 
-from utils.save_results import save_results
 from echo_state_network import DeepEchoStateNetwork
 from reservoir_memory_network import DeepReservoirMemoryNetwork
 
@@ -13,11 +12,9 @@ def accuracy(y_pred: np.ndarray[np.float32], y_true: np.ndarray[np.int8]) -> flo
     return (y_pred.astype(np.int8).flatten() == y_true.flatten()).sum() / len(y_true) * 100
 
 
-def test_sequential_mnist(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, results_path: str,
-                          hyperparameters: dict, validation_ratio: float, training_batch_size: int,
-                          validation_batch_size: int, testing_batch_size: int, use_last_state: bool,
-                          device: torch.device):
-
+def test_sequential_mnist(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, validation_ratio: float,
+                          training_batch_size: int, validation_batch_size: int, testing_batch_size: int,
+                          use_last_state: bool, device: torch.device) -> tuple[float, float]:
     data = SequentialMNIST(training=True, normalize=False, permute=True, seed=5)
     total_size = len(data)
     val_size = int(validation_ratio * total_size)
@@ -46,5 +43,4 @@ def test_sequential_mnist(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwo
     test_score = model.score(testing_dataset, accuracy, device, standardize=True, use_last_state=use_last_state,
                              disable_progress_bar=False)
 
-    save_results(results_path, hyperparameters, validation_score, 0,
-                 test_score, 0, 'accuracy', 'greater')
+    return validation_score, test_score
