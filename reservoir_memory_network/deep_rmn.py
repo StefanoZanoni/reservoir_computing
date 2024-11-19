@@ -259,11 +259,12 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                 non_linear_layer.reset_state(batch_size, device)
 
         # Pre-allocate non_linear_states and memory_states
-        self._non_linear_states = [
-            torch.empty((batch_size, seq_len, layer.non_linear_kernel.shape[0]),
-                        device=device, requires_grad=False, dtype=torch.float32)
-            for layer in self.non_linear_layers
-        ]
+        if not self._just_memory:
+            self._non_linear_states = [
+                torch.empty((batch_size, seq_len, layer.non_linear_kernel.shape[0]),
+                            device=device, requires_grad=False, dtype=torch.float32)
+                for layer in self.non_linear_layers
+            ]
         self._memory_states = [
             torch.empty((batch_size, seq_len, layer.memory_kernel.shape[0]),
                         device=device, requires_grad=False, dtype=torch.float32)
