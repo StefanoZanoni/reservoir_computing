@@ -14,6 +14,7 @@ from utils.test_sequential_mnist import test_sequential_mnist
 from utils.test_mg17 import test_mg17
 from utils.test_mg30 import test_mg30
 from utils.test_memory_capacity import test_memory_capacity
+from utils.test_inubushi import test_inubushi
 from utils.save_results import save_results
 
 import warnings
@@ -71,7 +72,8 @@ def generate_results_path(model_name, dataset_name, number_of_layers, non_linear
 def create_model(args, device):
     if args.dataset == 'sequential_mnist':
         task = 'classification'
-    elif args.dataset == 'memory_capacity' or args.dataset == 'mg17' or args.dataset == 'mg30':
+    elif (args.dataset == 'memory_capacity' or args.dataset == 'mg17' or args.dataset == 'mg30'
+          or args.dataset == 'inubushi'):
         task = 'regression'
 
     if args.model == 'esn':
@@ -141,11 +143,11 @@ def create_model(args, device):
             hyperparameters['effective_rescaling'] = True
         if args.bias:
             hyperparameters['bias'] = True
-            if bias_scaling is None:
+            if args.bias_scaling is None:
                 hyperparameters['bias_scaling'] = args.input_non_linear_scaling
             else:
                 hyperparameters['bias_scaling'] = args.bias_scaling
-        if args.fixed_input_kernel:
+        if args.fixed_input_kernels:
             hyperparameters['fixed_input_kernel'] = True
             hyperparameters['signs_from'] = args.signs_from
         if args.circular_non_linear:
@@ -345,6 +347,7 @@ if __name__ == '__main__':
     parser.add_argument('--input_to_all_memory', action='store_true',
                         help='Whether to pass the input to all memory layers or not')
     parser.add_argument('--runs', type=int, default=1, help='Number of runs')
+    parser.add_argument('--v', type=float, default=1, help='v value for Inubushi dataset')
 
     # connectivity
     parser.add_argument('--input_memory_connectivity', type=int, default=1, help='Input memory connectivity')
@@ -482,3 +485,8 @@ if __name__ == '__main__':
 
         save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
                      np.mean(test_scores), np.std(test_scores), 'mse', 'less')
+
+    elif dataset_name == 'inubushi':
+        model, hyperparameters = create_model(args, device)
+        test_inubushi(runs, args.v, results_path, hyperparameters, model, 20, device, use_last_state,
+                      args.initial_transients)
