@@ -386,9 +386,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                     if use_last_state else self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[2 if self._just_memory else 0].cpu().numpy()
                 ys[idx:idx + batch_size] = y.numpy()
                 idx += batch_size
-                del x
-                if device.type == 'cuda':
-                    torch.cuda.empty_cache()
 
             if not use_last_state:
                 states = np.concatenate(states, axis=0)
@@ -449,9 +446,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                 if use_last_state else self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[2 if self._just_memory else 0].cpu().numpy()
             ys[idx:idx + batch_size] = y.numpy()
             idx += batch_size
-            del x
-            if device.type == 'cuda':
-                torch.cuda.empty_cache()
 
         if not use_last_state:
             states = np.concatenate(states, axis=0)
@@ -504,9 +498,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             states[idx:idx + batch_size] = self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[3 if self._just_memory else 1].cpu().numpy() \
                 if use_last_state else self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[2 if self._just_memory else 0].cpu().numpy()
             idx += batch_size
-            del x
-            if device.type == 'cuda':
-                torch.cuda.empty_cache()
 
         if not use_last_state:
             states = np.concatenate(states, axis=0)
