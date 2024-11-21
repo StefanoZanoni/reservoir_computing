@@ -240,7 +240,7 @@ def create_model(args, device):
         if args.distribution == 'uniform':
             hyperparameters['input_non_linear_scaling'] = args.input_non_linear_scaling
             hyperparameters['memory_non_linear_scaling'] = args.memory_non_linear_scaling
-        if not args.euler:
+        if not args.euler or not args.just_memory:
             hyperparameters['spectral_radius'] = args.spectral_radius
             hyperparameters['leaky_rate'] = args.leaky_rate
         if args.concatenate_non_linear and not args.just_memory:
@@ -459,8 +459,10 @@ if __name__ == '__main__':
         else:
             max_delay = memory_units * 2
 
+        model, hyperparameters = create_model(args, device)
+
         test_memory_capacity(runs, results_path, hyperparameters, model, max_delay, device, use_last_state,
-                             initial_transients)
+                             args.initial_transients)
 
     elif dataset_name == 'mg17':
 
