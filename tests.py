@@ -275,7 +275,7 @@ def create_model(args, device):
             hyperparameters['input_to_all_memory'] = True
         if args.legendre_memory:
             hyperparameters['legendre_memory'] = True
-            hyperparameters['theta'] = theta
+            hyperparameters['theta'] = args.theta
         if args.just_memory:
             hyperparameters['just_memory'] = True
         if args.number_of_non_linear_layers > 1 and not args.just_memory:
@@ -467,7 +467,7 @@ if __name__ == '__main__':
         test_scores, validation_scores = [], []
         for _ in range(runs):
             model, hyperparameters = create_model(args, device)
-            validation_score, test_score = test_mg17(model, use_last_state, device, initial_transients)
+            validation_score, test_score = test_mg17(model, use_last_state, device, args.initial_transients)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
 
@@ -479,7 +479,7 @@ if __name__ == '__main__':
         test_scores, validation_scores = [], []
         for _ in range(runs):
             model, hyperparameters = create_model(args, device)
-            validation_score, test_score = test_mg30(model, use_last_state, device, initial_transients)
+            validation_score, test_score = test_mg30(model, use_last_state, device, args.initial_transients)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
 
