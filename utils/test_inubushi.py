@@ -65,7 +65,7 @@ def test_inubushi(runs: int, v: float, results_path: str, hyperparameters: dict,
     save_results(results_path, hyperparameters, np.mean(mean_validation_scores), np.mean(std_validation_scores),
                  np.mean(mean_test_scores), np.mean(std_test_scores), 'nrmse', 'less')
 
-    with open(f'{results_path}/nrmse_{v}_v.csv', 'w', newline='') as csvfile:
+    with open(f'{results_path}/nrmse_v_{round(v, 2)}.csv', 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['validation_mean_nrmse', ' validation_std_nrmse', 'test_mean_nrmse', 'test_std_nrmse'])
         for i in range(max_delay):

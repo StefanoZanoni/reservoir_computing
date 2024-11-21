@@ -432,6 +432,8 @@ if __name__ == '__main__':
 
     results_path = generate_results_path(model_name, dataset_name, number_of_non_linear_layers, non_linear_units,
                                          memory_units, euler, legendre_memory, chebyshev_memory, just_memory)
+    if dataset_name == 'inubushi':
+        results_path = f'{results_path[:-1]}_v_{round(args.v, 2)}'
 
     if not os.path.exists(results_path):
         os.makedirs(results_path)
