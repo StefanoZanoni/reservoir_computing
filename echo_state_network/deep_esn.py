@@ -246,7 +246,11 @@ class DeepEchoStateNetwork(torch.nn.Module):
         states = np.empty((num_batches * batch_size, seq_len - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
-        ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32, order='F')
+        if len(target_attr.shape) == 2:
+            ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32, order='F')
+        else:
+            ys = np.empty((num_batches * batch_size, target_attr.shape[1], target_attr.shape[2]),
+                          dtype=np.float32, order='F')
         self._reset_state(batch_size, seq_len, device)
 
         self._trained = True
@@ -262,7 +266,10 @@ class DeepEchoStateNetwork(torch.nn.Module):
 
             if not use_last_state:
                 states = np.concatenate(states, axis=0)
-                ys = np.repeat(ys, states.shape[0] // ys.shape[0], axis=0) if ys.shape[1] == 1 else ys.T
+                if len(ys.shape) == 3:
+                    ys = np.concatenate(ys, axis=0)
+                else:
+                    ys = np.repeat(ys, states.shape[0] // ys.shape[0], axis=0) if ys.shape[1] == 1 else ys.T
 
             if standardize:
                 self._scaler = StandardScaler().fit(states)
@@ -310,7 +317,11 @@ class DeepEchoStateNetwork(torch.nn.Module):
         states = np.empty((num_batches * batch_size, seq_len - self._initial_transients,
                            state_size), dtype=np.float32) if not use_last_state \
             else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
-        ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32, order='F')
+        if len(target_attr.shape) == 2:
+            ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32, order='F')
+        else:
+            ys = np.empty((num_batches * batch_size, target_attr.shape[1], target_attr.shape[2]), dtype=np.float32,
+                          order='F')
         self._reset_state(batch_size, seq_len, device)
 
         idx = 0
@@ -323,7 +334,10 @@ class DeepEchoStateNetwork(torch.nn.Module):
 
         if not use_last_state:
             states = np.concatenate(states, axis=0)
-            ys = np.repeat(ys, states.shape[0] // ys.shape[0], axis=0) if ys.shape[1] == 1 else ys.T
+            if len(ys.shape) == 3:
+                ys = np.concatenate(ys, axis=0)
+            else:
+                ys = np.repeat(ys, states.shape[0] // ys.shape[0], axis=0) if ys.shape[1] == 1 else ys.T
 
         if standardize:
             states = self._scaler.transform(states)
