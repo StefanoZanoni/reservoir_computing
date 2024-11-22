@@ -15,6 +15,7 @@ from utils.test_mg17 import test_mg17
 from utils.test_mg30 import test_mg30
 from utils.test_memory_capacity import test_memory_capacity
 from utils.test_inubushi import test_inubushi
+from utils.test_lorenz import test_lorenz
 from utils.save_results import save_results
 
 import warnings
@@ -73,7 +74,7 @@ def create_model(args, device):
     if args.dataset == 'sequential_mnist':
         task = 'classification'
     elif (args.dataset == 'memory_capacity' or args.dataset == 'mg17' or args.dataset == 'mg30'
-          or args.dataset == 'inubushi'):
+          or args.dataset == 'inubushi' or args.dataset == 'lorenz96'):
         task = 'regression'
 
     if args.model == 'esn':
@@ -348,6 +349,10 @@ if __name__ == '__main__':
                         help='Whether to pass the input to all memory layers or not')
     parser.add_argument('--runs', type=int, default=1, help='Number of runs')
     parser.add_argument('--v', type=float, default=1, help='v value for Inubushi dataset')
+    parser.add_argument('--N', type=int, default=4, help='Number of variables in Lorenz96 model')
+    parser.add_argument('--F', type=float, default=8, help='Forcing term in Lorenz96 model')
+    parser.add_argument('--dataset_size', type=int, default=1, help='Number of examples in the dataset')
+    parser.add_argument('--lag', type=int, default=1, help='Number of time steps to predict into the future')
 
     # connectivity
     parser.add_argument('--input_memory_connectivity', type=int, default=1, help='Input memory connectivity')
@@ -494,3 +499,16 @@ if __name__ == '__main__':
         model, hyperparameters = create_model(args, device)
         test_inubushi(runs, args.v, results_path, hyperparameters, model, 20, device, use_last_state,
                       args.initial_transients)
+
+    elif dataset_name == 'lorenz96':
+        test_scores, validation_scores = [], []
+        for _ in range(runs):
+            model, hyperparameters = create_model(args, device)
+            validation_score, test_score = test_lorenz(args.N, args.F, args.dataset_size, args.lag, model,
+                                                       use_last_state, device, args.initial_transients,
+                                                       args.batch_training, args.batch_validation, args.batch_testing)
+            test_scores.append(test_score)
+            validation_scores.append(validation_score)
+
+        save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
+                     np.mean(test_scores), np.std(test_scores), 'nrmse', 'less')
