@@ -10,7 +10,9 @@ from reservoir_memory_network import DeepReservoirMemoryNetwork
 
 
 def nrmse(y_pred: np.ndarray[np.float32], y_true: np.ndarray[np.float32]) -> float:
-    return np.sqrt(np.mean((y_pred - y_true) ** 2)) / (np.max(y_true) - np.min(y_true))
+    # Normalized Root Mean Squared Error
+    # where the normalization is done by the root-mean-square of the target trajectory
+    return np.sqrt(np.mean((y_pred - y_true) ** 2)) / np.sqrt(np.mean(y_true ** 2))
 
 
 def test_inubushi(runs: int, v: float, results_path: str, hyperparameters: dict,
