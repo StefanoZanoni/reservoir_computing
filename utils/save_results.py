@@ -3,7 +3,7 @@ import numpy as np
 
 
 def save_results(results_path: str, hyperparameters: dict, mean_validation_score: float, std_validation_score: float,
-                 mean_test_score: float, std_test_score: float, score_type: str, relation: str):
+                 mean_test_score: float, std_test_score: float, score_type: str, relation: str) -> bool | None:
 
     if isinstance(mean_validation_score, np.float32):
         mean_validation_score = float(mean_validation_score)
@@ -38,3 +38,5 @@ def save_results(results_path: str, hyperparameters: dict, mean_validation_score
 
         with open(f'{results_path}/test_score.json', 'w') as f:
             json.dump({'mean_' + score_type: mean_test_score, 'std_' + score_type: std_test_score}, f, indent=4)
+
+    return update_condition

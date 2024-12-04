@@ -26,7 +26,7 @@ def test_inubushi(runs: int, v: float, results_path: str, hyperparameters: dict,
         for k in tqdm(range(max_delay), 'Delay', disable=False):
             k += 1  # k starts from 1
             # training
-            training_data = Inubushi(k, v, training=True)
+            training_data = Inubushi(k, round(v, 2), training=True)
             training_data.target = training_data.target[:, initial_transients:]
             training_dataloader = torch.utils.data.DataLoader(training_data,
                                                               batch_size=1,
@@ -64,12 +64,14 @@ def test_inubushi(runs: int, v: float, results_path: str, hyperparameters: dict,
     std_validation_scores = np.std(validation_scores, axis=0)
     std_test_scores = np.std(test_scores, axis=0)
 
-    save_results(results_path, hyperparameters, np.mean(mean_validation_scores), np.mean(std_validation_scores),
-                 np.mean(mean_test_scores), np.mean(std_test_scores), 'nrmse', 'less')
+    update = save_results(results_path, hyperparameters, np.mean(mean_validation_scores),
+                          np.mean(std_validation_scores),
+                          np.mean(mean_test_scores), np.mean(std_test_scores), 'nrmse', 'less')
 
-    with open(f'{results_path}/nrmse_v_{round(v, 2)}.csv', 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(['validation_mean_nrmse', ' validation_std_nrmse', 'test_mean_nrmse', 'test_std_nrmse'])
-        for i in range(max_delay):
-            writer.writerow([mean_validation_scores[i], std_validation_scores[i],
-                             mean_test_scores[i], std_test_scores[i]])
+    if update:
+        with open(f'{results_path}/nrmse_v_{round(v, 2)}.csv', 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['validation_mean_nrmse', ' validation_std_nrmse', 'test_mean_nrmse', 'test_std_nrmse'])
+            for i in range(max_delay):
+                writer.writerow([mean_validation_scores[i], std_validation_scores[i],
+                                 mean_test_scores[i], std_test_scores[i]])
