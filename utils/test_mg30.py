@@ -7,8 +7,10 @@ from reservoir_memory_network import DeepReservoirMemoryNetwork
 from utils.save_results import save_results
 
 
-def mse(y_pred: np.ndarray[np.float32], y_true: np.ndarray[np.float32]) -> float:
-    return np.mean((y_pred.flatten() - y_true.flatten()) ** 2)
+def nrmse(y_pred: np.ndarray[np.float32], y_true: np.ndarray[np.float32]) -> float:
+    # Normalized Root Mean Squared Error
+    # where the normalization is done by the root-mean-square of the target trajectory
+    return np.sqrt(np.mean((y_pred - y_true) ** 2)) / np.sqrt(np.mean(y_true ** 2))
 
 
 def test_mg30(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, use_last_state: bool, device: torch.device,
@@ -31,7 +33,7 @@ def test_mg30(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, use_last
                                                         batch_size=1,
                                                         shuffle=False,
                                                         drop_last=False)
-    validation_score = model.score(validation_dataloader, mse, device, standardize=True,
+    validation_score = model.score(validation_dataloader, nrmse, device, standardize=True,
                                    use_last_state=use_last_state, disable_progress_bar=False)
 
     # test
@@ -41,7 +43,7 @@ def test_mg30(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, use_last
                                                      batch_size=1,
                                                      shuffle=False,
                                                      drop_last=False)
-    test_score = model.score(testing_dataloader, mse, device, standardize=True, use_last_state=use_last_state,
+    test_score = model.score(testing_dataloader, nrmse, device, standardize=True, use_last_state=use_last_state,
                              disable_progress_bar=False)
 
     return validation_score, test_score

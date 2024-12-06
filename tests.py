@@ -481,7 +481,7 @@ if __name__ == '__main__':
             validation_scores.append(validation_score)
 
         save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
-                     np.mean(test_scores), np.std(test_scores), 'mse', 'less')
+                     np.mean(test_scores), np.std(test_scores), 'nrmse', 'less')
 
     elif dataset_name == 'mg30':
 
@@ -493,7 +493,7 @@ if __name__ == '__main__':
             validation_scores.append(validation_score)
 
         save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
-                     np.mean(test_scores), np.std(test_scores), 'mse', 'less')
+                     np.mean(test_scores), np.std(test_scores), 'nrmse', 'less')
 
     elif dataset_name == 'inubushi':
         model, hyperparameters = create_model(args, device)
