@@ -17,6 +17,7 @@ class Inubushi(Dataset):
 
         Args:
             k (int): The delay parameter for the time series.
+            v (float): The non-linearity parameter.
             training (bool): Flag indicating whether the dataset is for training or validation/testing.
         """
 
