@@ -120,9 +120,31 @@ class MemoryCell(torch.nn.Module):
 
         self.memory_kernel = init_memory_kernel(memory_units, theta, legendre, memory_scaling)
 
-        self.register_buffer('_combined_kernel', torch.cat((self.memory_kernel, self.input_memory_kernel), dim=0))
-
+        if legendre:
+            self.register_buffer('_combined_kernel',
+                                 torch.cat((self.memory_kernel, self.input_memory_kernel), dim=0))
+        else:
+            self.register_buffer('_combined_kernel',
+                                 torch.cat((self.memory_kernel, self.input_memory_kernel), dim=0).to_sparse_csc())
         self._memory_state = None
+        self._forward_function: Callable[[torch.Tensor], torch.FloatTensor] = (
+            self._forward_legendre) if legendre else self._forward
+
+    @torch.no_grad()
+    def _forward_legendre(self, xt: torch.Tensor) -> torch.FloatTensor:
+
+        # m(t) = Vm * m(t-1) + Vx * x(t)
+        self._memory_state = torch.mm(torch.cat((self._memory_state, xt), dim=1), self._combined_kernel)
+
+        return self._memory_state
+
+    @torch.no_grad()
+    def _forward(self, xt: torch.Tensor) -> torch.FloatTensor:
+
+        # m(t) = Vm * m(t-1) + Vx * x(t)
+        self._memory_state = torch.sparse.mm(torch.cat((self._memory_state, xt), dim=1), self._combined_kernel)
+
+        return self._memory_state
 
     @torch.no_grad()
     def forward(self, xt: torch.Tensor) -> torch.FloatTensor:
@@ -134,10 +156,7 @@ class MemoryCell(torch.nn.Module):
         :return: The memory state at time t.
         """
 
-        # m(t) = Vm * m(t-1) + Vx * x(t)
-        self._memory_state = torch.mm(torch.cat((self._memory_state, xt), dim=1), self._combined_kernel)
-
-        return self._memory_state
+        return self._forward_function(xt)
 
     def reset_state(self, batch_size: int, device: torch.device) -> None:
         """
