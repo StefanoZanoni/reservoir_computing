@@ -223,7 +223,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
             -> tuple[np.ndarray, np.ndarray, int, int]:
         batch_size = data.batch_size
         num_batches = len(data)
-        state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
+        state_size = self._total_units
 
         # pre-allocate memory for the states and the targets
         dataset = data.dataset.dataset if isinstance(data.dataset, torch.utils.data.Subset) else data.dataset
