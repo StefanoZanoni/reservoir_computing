@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import gc
 
 from tqdm import tqdm
 
@@ -347,19 +348,8 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         else:
             return None, None, memory_states[:, self._initial_transients:, :], memory_states[:, -1, :]
 
-    @torch.no_grad()
-    def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
-            use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
-        """
-        Fits the deep reservoir memory network on the given data.
-
-        :param data: The DataLoader for the training data.
-        :param device: The device to perform computations on.
-        :param standardize: Whether to standardize the states before fitting the readout layer.
-        :param use_last_state: Whether to use the state at the last time step for fitting the readout layer.
-        :param disable_progress_bar: Whether to disable the progress bar.
-        """
-
+    def _allocate(self, data: torch.utils.data.DataLoader, use_last_state: bool = True)\
+            -> tuple[np.ndarray, np.ndarray, int, int]:
         batch_size = data.batch_size
         num_batches = len(data)
         state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
@@ -379,7 +369,27 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         else:
             ys = np.empty((num_batches * batch_size, target_attr.shape[1], target_attr.shape[2]),
                           dtype=np.float32, order='F')
+
+        return states, ys, batch_size, seq_len
+
+    @torch.no_grad()
+    def fit(self, data: torch.utils.data.DataLoader, device: torch.device, standardize: bool = False,
+            use_last_state: bool = True, disable_progress_bar: bool = False) -> None:
+        """
+        Fits the deep reservoir memory network on the given data.
+
+        :param data: The DataLoader for the training data.
+        :param device: The device to perform computations on.
+        :param standardize: Whether to standardize the states before fitting the readout layer.
+        :param use_last_state: Whether to use the state at the last time step for fitting the readout layer.
+        :param disable_progress_bar: Whether to disable the progress bar.
+        """
+
+        states, ys, batch_size, seq_len = self._allocate(data, use_last_state)
         self._reset_state(batch_size, seq_len, device)
+
+        if device == torch.device('cuda'):
+            torch.cuda.empty_cache()
 
         self._trained = True
         idx = 0
@@ -429,26 +439,11 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             if self._scaler is None:
                 raise ValueError('Standardization is enabled but the model has not been fitted yet.')
 
-        batch_size = data.batch_size
-        num_batches = len(data)
-        state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
-
-        # pre-allocate memory for the states and the targets
-        dataset = data.dataset.dataset if isinstance(data.dataset, torch.utils.data.Subset) else data.dataset
-        data_attr = getattr(dataset, 'data', None)
-        target_attr = getattr(dataset, 'target', None)
-        if data_attr is None or target_attr is None:
-            raise AttributeError('Dataset does not have the required attributes `data` and `target`.')
-        seq_len = data_attr.shape[1]
-        states = np.empty((num_batches * batch_size, seq_len - self._initial_transients,
-                           state_size), dtype=np.float32) if not use_last_state \
-            else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
-        if len(target_attr.shape) == 2:
-            ys = np.empty((num_batches * batch_size, target_attr.shape[1]), dtype=np.float32, order='F')
-        else:
-            ys = np.empty((num_batches * batch_size, target_attr.shape[1], target_attr.shape[2]), dtype=np.float32,
-                          order='F')
+        states, ys, batch_size, seq_len = self._allocate(data, use_last_state)
         self._reset_state(batch_size, seq_len, device)
+
+        if device == torch.device('cuda'):
+            torch.cuda.empty_cache()
 
         idx = 0
         for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
@@ -491,20 +486,11 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             if self._scaler is None:
                 raise ValueError('Standardization is enabled but the model has not been fitted yet.')
 
-        batch_size = data.batch_size
-        num_batches = len(data)
-        state_size = self._total_non_linear_units if not self._just_memory else self._total_memory_units
-
-        # pre-allocate memory for the states
-        dataset = data.dataset.dataset if isinstance(data.dataset, torch.utils.data.Subset) else data.dataset
-        data_attr = getattr(dataset, 'data', None)
-        if data_attr is None:
-            raise AttributeError('Dataset does not have the required attributes `data`.')
-        seq_len = data_attr.shape[1]
-        states = np.empty((num_batches * batch_size, seq_len - self._initial_transients,
-                           state_size), dtype=np.float32) if not use_last_state \
-            else np.empty((num_batches * batch_size, state_size), dtype=np.float32)
+        states, _, batch_size, seq_len = self._allocate(data, use_last_state)
         self._reset_state(batch_size, seq_len, device)
+
+        if device == torch.device('cuda'):
+            torch.cuda.empty_cache()
 
         idx = 0
         for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
