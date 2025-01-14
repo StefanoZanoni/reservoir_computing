@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 from .esn import ReservoirCell
 
-from sklearn.linear_model import RidgeClassifier, Ridge, LinearRegression
+from sklearn.linear_model import RidgeClassifierCV, RidgeCV
 from sklearn.preprocessing import StandardScaler
 
 from typing import Callable
@@ -43,9 +43,7 @@ class DeepEchoStateNetwork(torch.nn.Module):
                  euler: bool = False,
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
-                 alpha: float = 1.0,
-                 max_iter: int = 1000,
-                 tolerance: float = 1e-4,
+                 alphas: list[float] = None,
                  input_to_all: bool = False,
                  ) -> None:
         """
@@ -82,6 +80,10 @@ class DeepEchoStateNetwork(torch.nn.Module):
         """
 
         super().__init__()
+        if alphas is None:
+            alphas = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100]
+        if not isinstance(alphas, list):
+            raise ValueError('Invalid alphas.')
         self._initial_transients = initial_transients
         self._scaler = None
         self._concatenate = concatenate
@@ -161,12 +163,9 @@ class DeepEchoStateNetwork(torch.nn.Module):
         self.reservoir = torch.nn.ModuleList(reservoir_layers)
 
         if task == 'classification':
-            self.readout = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
+            self.readout = RidgeClassifierCV(alphas=alphas)
         elif task == 'regression':
-            if alpha > 0:
-                self.readout = Ridge(alpha=alpha, max_iter=max_iter, tol=tolerance)
-            else:
-                self.readout = LinearRegression()
+            self.readout = RidgeCV(alphas=alphas)
         self._trained = False
         self._non_linear_states = None
         self._concatenate_state_input = [input_to_all and idx > 0 for idx in range(number_of_layers)]

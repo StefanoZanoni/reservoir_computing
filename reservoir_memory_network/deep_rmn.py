@@ -1,10 +1,10 @@
 import torch
 import numpy as np
-import gc
+import time
 
 from tqdm import tqdm
 
-from sklearn.linear_model import RidgeClassifier, Ridge, LinearRegression
+from sklearn.linear_model import RidgeClassifierCV, RidgeCV
 from sklearn.preprocessing import StandardScaler
 
 from .rmn import MemoryCell, NonLinearCell
@@ -54,15 +54,14 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                  euler: bool = False,
                  epsilon: float = 1e-3,
                  gamma: float = 1e-3,
-                 alpha: float = 1.0,
-                 max_iter: int = 1000,
-                 tolerance: float = 1e-4,
+                 alphas: list[float] = None,
                  legendre: bool = False,
                  legendre_input: bool = False,
                  theta: float = 1.0,
                  just_memory: bool = False,
                  input_to_all_non_linear: bool = False,
                  input_to_all_memory: bool = False,
+                 memory_non_linear_connection_type: str = 'last_to_first',
                  ) -> None:
         """
         Initializes the Deep Reservoir Memory Network.
@@ -111,6 +110,10 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         """
 
         super().__init__()
+        if alphas is None:
+            alphas = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100]
+        if not isinstance(alphas, list):
+            raise ValueError('Invalid alphas.')
         self._total_non_linear_units = total_non_linear_units
         self._total_memory_units = total_memory_units
         self._initial_transients = initial_transients
@@ -232,18 +235,25 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
             self.non_linear_layers = torch.nn.ModuleList(non_linear_layers)
 
         if task == 'classification':
-            self.readout = RidgeClassifier(alpha=alpha, max_iter=max_iter, tol=tolerance)
+            self.readout = RidgeClassifierCV(alphas=alphas)
         elif task == 'regression':
-            if alpha > 0:
-                self.readout = Ridge(alpha=alpha, max_iter=max_iter, tol=tolerance)
-            else:
-                self.readout = LinearRegression()
+            self.readout = RidgeCV(alphas=alphas)
         self._trained = False
         self._memory_states = None
         self._non_linear_states = None
         self._concatenate_memory_input = [input_to_all_memory and idx > 0 for idx in range(number_of_memory_layers)]
         self._concatenate_non_linear_input = [input_to_all_non_linear and idx > 0
                                               for idx in range(number_of_non_linear_layers)]
+        if memory_non_linear_connection_type not in ['last_to_first', 'all_to_first', 'last_to_all', 'all_to_all']:
+            raise ValueError('Invalid memory_non_linear_connection_type.')
+        if memory_non_linear_connection_type == 'last_to_first':
+            self._memory_non_linear_connection_type = 0
+        elif memory_non_linear_connection_type == 'all_to_first':
+            self._memory_non_linear_connection_type = 1
+        elif memory_non_linear_connection_type == 'last_to_all':
+            self._memory_non_linear_connection_type = 2
+        else:
+            self._memory_non_linear_connection_type = 3
 
     def _reset_state(self, batch_size: int, seq_len, device: torch.device) -> None:
         """
