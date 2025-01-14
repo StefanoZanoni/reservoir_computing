@@ -63,6 +63,7 @@ def test_inubushi(runs: int, v: float, results_path: str, hyperparameters: dict,
     mean_test_scores = np.mean(test_scores, axis=0)
     std_validation_scores = np.std(validation_scores, axis=0)
     std_test_scores = np.std(test_scores, axis=0)
+    hyperparameters['alpha'] = model.readout.alpha_
 
     update = save_results(results_path, hyperparameters, np.mean(mean_validation_scores),
                           np.mean(std_validation_scores),

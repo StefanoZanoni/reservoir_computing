@@ -448,6 +448,7 @@ if __name__ == '__main__':
                                                                  testing_batch_size, use_last_state, device)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
+            hyperparameters['alpha'] = model.readout.alpha_
 
         save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
                      np.mean(test_scores), np.std(test_scores), 'accuracy', 'greater')
@@ -473,6 +474,7 @@ if __name__ == '__main__':
             validation_score, test_score = test_mg17(model, use_last_state, device, args.initial_transients)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
+            hyperparameters['alpha'] = model.readout.alpha_
 
         save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
                      np.mean(test_scores), np.std(test_scores), 'nrmse', 'less')
@@ -485,6 +487,7 @@ if __name__ == '__main__':
             validation_score, test_score = test_mg30(model, use_last_state, device, args.initial_transients)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
+            hyperparameters['alpha'] = model.readout.alpha_
 
         save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
                      np.mean(test_scores), np.std(test_scores), 'nrmse', 'less')
@@ -503,6 +506,7 @@ if __name__ == '__main__':
                                                        args.batch_training, args.batch_validation, args.batch_testing)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
+            hyperparameters['alpha'] = model.readout.alpha_
 
         save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
                      np.mean(test_scores), np.std(test_scores), 'nrmse', 'less')

@@ -71,6 +71,7 @@ def test_memory_capacity(runs: int, results_path, hyperparameters: dict,
         validation_determination_coefficients.append(mc_ks_validation)
         test_determination_coefficients.append(mc_ks_test)
 
+    hyperparameters['alpha'] = model.readout.alpha_
     save_results(results_path, hyperparameters, np.mean(mcs_validation), np.std(mcs_validation), np.mean(mcs_test),
                  np.std(mcs_test), 'memory_capacity', 'greater')
 
