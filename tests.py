@@ -108,9 +108,9 @@ def create_model(args, device):
         ).to(device)
 
         hyperparameters = {'validation_ratio': args.validation_ratio,
-                           'training_batch_size': args.batch_training,
-                           'validation_batch_size': args.batch_validation,
-                           'testing_batch_size': args.batch_testing,
+                           'training_batch_size': args.training_batch_size,
+                           'validation_batch_size': args.validation_batch_size,
+                           'testing_batch_size': args.testing_batch_size,
 
                            'number_of_non_linear_layers': args.number_of_non_linear_layers,
 
@@ -204,9 +204,9 @@ def create_model(args, device):
         ).to(device)
 
         hyperparameters = {'validation_ratio': args.validation_ratio,
-                           'training_batch_size': args.batch_training,
-                           'validation_batch_size': args.batch_validation,
-                           'testing_batch_size': args.batch_testing,
+                           'training_batch_size': args.training_batch_size,
+                           'validation_batch_size': args.validation_batch_size,
+                           'testing_batch_size': args.testing_batch_size,
 
                            'number_of_non_linear_layers': args.number_of_non_linear_layers,
                            'number_of_memory_layers': args.number_of_memory_layers,
