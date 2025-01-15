@@ -55,9 +55,12 @@ elif tcmalloc_path:
     os.environ['LD_PRELOAD'] = f'{tcmalloc_path}:' + os.environ.get('LD_PRELOAD', '')
 
 
-def generate_results_path(model_name, dataset_name, number_of_layers, non_linear_units, memory_units, euler,
-                          legendre_memory, chebyshev_memory, just_memory):
-    base_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_layers}/'
+def generate_results_path(model_name, dataset_name, number_of_non_linear_layers, non_linear_units, memory_units, euler,
+                          legendre_memory, chebyshev_memory, just_memory, number_of_memory_layers=1):
+    if model_name == 'esn':
+        base_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_non_linear_layers}/'
+    elif model_name == 'rmn':
+        base_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_memory_layers}m_{number_of_non_linear_layers}nl/'
     if model_name == 'esn':
         return base_path + f'{non_linear_units}_euler/' if euler else base_path + f'{non_linear_units}/'
     elif model_name == 'rmn':
@@ -396,6 +399,7 @@ if __name__ == '__main__':
     testing_batch_size = args.testing_batch_size
 
     number_of_non_linear_layers = args.number_of_non_linear_layers
+    number_of_memory_layers = args.number_of_memory_layers
 
     non_linear_units = args.non_linear_units
     memory_units = args.memory_units
@@ -430,7 +434,7 @@ if __name__ == '__main__':
         os.makedirs(f'./results/{model_name}/{dataset_name}')
 
     results_path = generate_results_path(model_name, dataset_name, number_of_non_linear_layers, non_linear_units,
-                                         memory_units, euler, legendre_memory, chebyshev_memory, just_memory)
+                                         memory_units, euler, legendre_memory, chebyshev_memory, just_memory, number_of_memory_layers)
     if dataset_name == 'inubushi':
         results_path = f'{results_path[:-1]}_v_{round(args.v, 2)}'
 
