@@ -297,9 +297,9 @@ if __name__ == '__main__':
 
     # dataset arguments
     parser.add_argument('--validation_ratio', type=float, default=0.2, help='Validation ratio')
-    parser.add_argument('--batch_training', type=int, default=1, help='Training batch size')
-    parser.add_argument('--batch_validation', type=int, default=1, help='Validation batch size')
-    parser.add_argument('--batch_testing', type=int, default=1, help='Testing batch size')
+    parser.add_argument('--training_batch_size', type=int, default=1, help='Training batch size')
+    parser.add_argument('--validation_batch_size', type=int, default=1, help='Validation batch size')
+    parser.add_argument('--testing_batch_size', type=int, default=1, help='Testing batch size')
 
     # number of units
     parser.add_argument('--input_units', type=int, default=1, help='Number of input units')
@@ -391,9 +391,9 @@ if __name__ == '__main__':
     model_name = args.model
 
     validation_ratio = args.validation_ratio
-    training_batch_size = args.batch_training
-    validation_batch_size = args.batch_validation
-    testing_batch_size = args.batch_testing
+    training_batch_size = args.training_batch_size
+    validation_batch_size = args.validation_batch_size
+    testing_batch_size = args.testing_batch_size
 
     number_of_non_linear_layers = args.number_of_non_linear_layers
 
