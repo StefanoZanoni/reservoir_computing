@@ -507,7 +507,8 @@ if __name__ == '__main__':
             model, hyperparameters = create_model(args, device)
             validation_score, test_score = test_lorenz(args.N, args.F, args.dataset_size, args.lag, model,
                                                        use_last_state, device, args.initial_transients,
-                                                       args.batch_training, args.batch_validation, args.batch_testing)
+                                                       args.training_batch_size, args.validation_batch_size,
+                                                       args.testing_batch_size)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
             hyperparameters['alpha'] = model.readout.alpha_
