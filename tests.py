@@ -16,6 +16,7 @@ from utils.test_mg30 import test_mg30
 from utils.test_memory_capacity import test_memory_capacity
 from utils.test_inubushi import test_inubushi
 from utils.test_lorenz import test_lorenz
+from utils.test_narma30 import test_narma30
 from utils.save_results import save_results
 
 import warnings
@@ -77,7 +78,7 @@ def create_model(args, device):
     if args.dataset == 'sequential_mnist':
         task = 'classification'
     elif (args.dataset == 'memory_capacity' or args.dataset == 'mg17' or args.dataset == 'mg30'
-          or args.dataset == 'inubushi' or args.dataset == 'lorenz96'):
+          or args.dataset == 'inubushi' or args.dataset == 'lorenz96' or args.dataset == 'narma30'):
         task = 'regression'
 
     if args.model == 'esn':
@@ -509,6 +510,19 @@ if __name__ == '__main__':
                                                        use_last_state, device, args.initial_transients,
                                                        args.training_batch_size, args.validation_batch_size,
                                                        args.testing_batch_size)
+            test_scores.append(test_score)
+            validation_scores.append(validation_score)
+            hyperparameters['alpha'] = model.readout.alpha_
+
+        save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
+                     np.mean(test_scores), np.std(test_scores), 'nrmse', 'less')
+
+    elif dataset_name == 'narma30':
+
+        test_scores, validation_scores = [], []
+        for _ in range(runs):
+            model, hyperparameters = create_model(args, device)
+            validation_score, test_score = test_narma30(model, use_last_state, device, args.initial_transients)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
             hyperparameters['alpha'] = model.readout.alpha_
