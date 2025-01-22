@@ -15,7 +15,7 @@ def accuracy(y_pred: np.ndarray[np.float32], y_true: np.ndarray[np.int8]) -> flo
 def test_sequential_mnist(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, validation_ratio: float,
                           training_batch_size: int, validation_batch_size: int, testing_batch_size: int,
                           use_last_state: bool, device: torch.device) -> tuple[float, float]:
-    data = SequentialMNIST(training=True, normalize=False, permute=True, seed=7919)
+    data = SequentialMNIST(training=True, normalize=False, permute=True, seed=5)
     total_size = len(data)
     val_size = int(validation_ratio * total_size)
     train_size = total_size - val_size
