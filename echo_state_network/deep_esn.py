@@ -9,6 +9,7 @@ from sklearn.linear_model import RidgeClassifierCV, RidgeCV
 from sklearn.preprocessing import StandardScaler
 
 from typing import Callable
+import time
 
 
 class DeepEchoStateNetwork(torch.nn.Module):
@@ -168,7 +169,11 @@ class DeepEchoStateNetwork(torch.nn.Module):
             self.readout = RidgeCV(alphas=alphas)
         self._trained = False
         self._non_linear_states = None
-        self._concatenate_state_input = [input_to_all and idx > 0 for idx in range(number_of_layers)]
+        self._input_to_all = input_to_all
+        self.time_sum = 0
+        self.time_count = 0
+        self._forward_function: Callable[[torch.Tensor], tuple] = (
+            self._forward_deep) if number_of_layers > 1 else self._forward
 
     def _reset_state(self, batch_size: int, seq_len: int, device: torch.device) -> None:
         """
@@ -198,18 +203,48 @@ class DeepEchoStateNetwork(torch.nn.Module):
         """
 
         seq_len = x.shape[1]
+        layer_state = self._non_linear_states[0]
+        non_linear_layer = self.reservoir[0]
+        for t in range(seq_len):
+            layer_state[:, t, :].copy_(non_linear_layer(x[:, t]))
 
-        last_non_linear_state = x
-        for idx, non_linear_layer in enumerate(self.reservoir):
-            layer_states = self._non_linear_states[idx]
-            if self._concatenate_state_input[idx]:
+        if self._concatenate:
+            non_linear_states = torch.cat(self._non_linear_states, dim=-1)
+        else:
+            non_linear_states = self._non_linear_states[-1]
+
+        return non_linear_states[:, self._initial_transients:, :], non_linear_states[:, -1, :]
+
+    def _forward_deep(self, x: torch.Tensor) -> tuple:
+        """
+        Forward pass of the model.
+
+        :param x: The input tensor.
+
+        :return: The state of the deep reservoir for all the time steps and the state for the last time step.
+        """
+
+        seq_len = x.shape[1]
+
+        layer_states = self._non_linear_states[0]
+        non_linear_layer = self.reservoir[0]
+        for t in range(seq_len):
+            layer_states[:, t, :].copy_(non_linear_layer(x[:, t]))
+        last_non_linear_state = layer_states
+
+        if self._input_to_all:
+            for idx, non_linear_layer in enumerate(self.reservoir[1:]):
+                layer_states = self._non_linear_states[idx]
                 for t in range(seq_len):
                     (layer_states[:, t, :].copy_
                      (non_linear_layer(torch.cat([last_non_linear_state[:, t], x[:, t]], dim=-1))))
-            else:
+                last_non_linear_state = layer_states
+        else:
+            for idx, non_linear_layer in enumerate(self.reservoir[1:]):
+                layer_states = self._non_linear_states[idx]
                 for t in range(seq_len):
                     layer_states[:, t, :].copy_(non_linear_layer(last_non_linear_state[:, t]))
-            last_non_linear_state = layer_states
+                last_non_linear_state = layer_states
 
         if self._concatenate:
             non_linear_states = torch.cat(self._non_linear_states, dim=-1)
@@ -267,8 +302,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
             # iterate over the data
             for x, y in tqdm(data, desc='Fitting', disable=disable_progress_bar):
                 x = x.to(device)
-                states[idx:idx + batch_size] = self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[1].cpu().numpy()\
-                    if use_last_state else self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[0].cpu().numpy()
+                states[idx:idx + batch_size] = self._forward_function(x.unsqueeze(-1) if x.dim() == 2 else x)[1].cpu().numpy()\
+                    if use_last_state else self._forward_function(x.unsqueeze(-1) if x.dim() == 2 else x)[0].cpu().numpy()
                 ys[idx:idx + batch_size] = y.numpy()
                 idx += batch_size
 
@@ -320,8 +355,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
         idx = 0
         for x, y in tqdm(data, desc='Scoring', disable=disable_progress_bar):
             x = x.to(device)
-            states[idx:idx + batch_size] = self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[1].cpu().numpy()\
-                if use_last_state else self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[0].cpu().numpy()
+            states[idx:idx + batch_size] = self._forward_function(x.unsqueeze(-1) if x.dim() == 2 else x)[1].cpu().numpy()\
+                if use_last_state else self._forward_function(x.unsqueeze(-1) if x.dim() == 2 else x)[0].cpu().numpy()
             ys[idx:idx + batch_size] = y.numpy()
             idx += batch_size
 
@@ -369,8 +404,8 @@ class DeepEchoStateNetwork(torch.nn.Module):
         # iterate over the data
         for x, _ in tqdm(data, desc='Predicting', disable=disable_progress_bar):
             x = x.to(device)
-            states[idx:idx + batch_size] = self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[1].cpu().numpy()\
-                if use_last_state else self._forward(x.unsqueeze(-1) if x.dim() == 2 else x)[0].cpu().numpy()
+            states[idx:idx + batch_size] = self._forward_function(x.unsqueeze(-1) if x.dim() == 2 else x)[1].cpu().numpy()\
+                if use_last_state else self._forward_function(x.unsqueeze(-1) if x.dim() == 2 else x)[0].cpu().numpy()
             idx += batch_size
 
         if not use_last_state:
