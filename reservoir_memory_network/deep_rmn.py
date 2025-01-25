@@ -241,9 +241,8 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         self._trained = False
         self._memory_states = None
         self._non_linear_states = None
-        self._concatenate_memory_input = [input_to_all_memory and idx > 0 for idx in range(number_of_memory_layers)]
-        self._concatenate_non_linear_input = [input_to_all_non_linear and idx > 0
-                                              for idx in range(number_of_non_linear_layers)]
+        self._input_to_all_memory = input_to_all_memory
+        self._input_to_all_non_linear = input_to_all_non_linear
         if memory_non_linear_connection_type not in ['last_to_first', 'all_to_first', 'last_to_all', 'all_to_all']:
             raise ValueError('Invalid memory_non_linear_connection_type.')
         if memory_non_linear_connection_type == 'last_to_first':
@@ -296,50 +295,55 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         seq_len = x.shape[1]
 
         # iterate over the memory layers and compute the states
-        last_memory_state = x
-        for idx, memory_layer in enumerate(self.memory_layers):
-            layer_states = self._memory_states[idx]
-            if self._concatenate_memory_input[idx]:
+        layer_states = self._memory_states[0]
+        memory_layer = self.memory_layers[0]
+        for t in range(seq_len):
+            layer_states[:, t, :].copy_(memory_layer(x[:, t]))
+        last_memory_state = layer_states
+
+        if self._input_to_all_memory:
+            for idx, memory_layer in enumerate(self.memory_layers[1:]):
+                layer_states = self._memory_states[idx]
                 for t in range(seq_len):
                     (layer_states[:, t, :].copy_
                      (memory_layer(torch.cat([last_memory_state[:, t], x[:, t]], dim=-1))))
-            else:
+                last_memory_state = layer_states
+        else:
+            for idx, memory_layer in enumerate(self.memory_layers[1:]):
+                layer_states = self._memory_states[idx]
                 for t in range(seq_len):
                     layer_states[:, t, :].copy_(memory_layer(last_memory_state[:, t]))
-            last_memory_state = layer_states
+                last_memory_state = layer_states
 
         # iterate over the non-linear layers and compute the states
         if not self._just_memory:
-            last_non_linear_state = x
-            for idx, non_linear_layer in enumerate(self.non_linear_layers):
-                layer_states = self._non_linear_states[idx]
-                # just the first non-linear layer receives the last memory state (default deep architecture)
-                if idx == 0:
-                    if self._concatenate_non_linear_input[idx]:
-                        for t in range(seq_len):
-                            layer_states[:, t, :].copy_(
-                                non_linear_layer(
-                                    torch.cat([last_non_linear_state[:, t], x[:, t]], dim=-1),
-                                    last_memory_state[:, t, :])
-                            )
-                    else:
-                        for t in range(seq_len):
-                            layer_states[:, t, :].copy_(
-                                non_linear_layer(last_non_linear_state[:, t], last_memory_state[:, t, :])
-                            )
-                else:
-                    if self._concatenate_non_linear_input[idx]:
-                        for t in range(seq_len):
-                            layer_states[:, t, :].copy_(
-                                non_linear_layer(
-                                    torch.cat([last_non_linear_state[:, t], x[:, t]], dim=-1))
-                            )
-                    else:
-                        for t in range(seq_len):
-                            layer_states[:, t, :].copy_(
-                                non_linear_layer(last_non_linear_state[:, t])
-                            )
-                last_non_linear_state = layer_states
+
+            # just the first non-linear layer receives the last memory state (default deep architecture)
+            layer_states = self._non_linear_states[0]
+            non_linear_layer = self.non_linear_layers[0]
+            for t in range(seq_len):
+                layer_states[:, t, :].copy_(
+                    non_linear_layer(x[:, t], last_memory_state[:, t, :])
+                )
+            last_non_linear_state = layer_states
+
+            if self._input_to_all_non_linear:
+                for idx, non_linear_layer in enumerate(self.non_linear_layers[1:]):
+                    layer_states = self._non_linear_states[idx]
+                    for t in range(seq_len):
+                        layer_states[:, t, :].copy_(
+                            non_linear_layer(
+                                torch.cat([last_non_linear_state[:, t], x[:, t]], dim=-1))
+                        )
+                    last_non_linear_state = layer_states
+            else:
+                for idx, non_linear_layer in enumerate(self.non_linear_layers[1:]):
+                    layer_states = self._non_linear_states[idx]
+                    for t in range(seq_len):
+                        layer_states[:, t, :].copy_(
+                            non_linear_layer(last_non_linear_state[:, t])
+                        )
+                    last_non_linear_state = layer_states
 
         if not self._just_memory:
             if self._concatenate_non_linear:
