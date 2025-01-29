@@ -445,7 +445,7 @@ if __name__ == '__main__':
     # choose a task
     if dataset_name == 'sequential_mnist':
 
-        test_scores, validation_scores = [], []
+        test_scores, validation_scores, alphas = [], [], []
         for run in range(runs):
             model, hyperparameters = create_model(args, device)
             validation_score, test_score = test_sequential_mnist(model, validation_ratio, training_batch_size,
@@ -453,8 +453,10 @@ if __name__ == '__main__':
                                                                  testing_batch_size, use_last_state, device)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
-            hyperparameters['alpha'] = model.readout.alpha_
+            alphas.append(model.readout.alpha_)
 
+        best_index = np.argmax(validation_scores)
+        hyperparameters['alpha'] = alphas[best_index]
         save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
                      np.mean(test_scores), np.std(test_scores), 'accuracy', 'greater')
 
@@ -473,27 +475,32 @@ if __name__ == '__main__':
 
     elif dataset_name == 'mg17':
 
-        test_scores, validation_scores = [], []
+        test_scores, validation_scores, alphas = [], [], []
         for _ in range(runs):
             model, hyperparameters = create_model(args, device)
             validation_score, test_score = test_mg17(model, use_last_state, device, args.initial_transients)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
-            hyperparameters['alpha'] = model.readout.alpha_
+            alphas.append(model.readout.alpha_)
+
+        best_index = np.argmin(validation_scores)
+        hyperparameters['alpha'] = alphas[best_index]
 
         save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
                      np.mean(test_scores), np.std(test_scores), 'nrmse', 'less')
 
     elif dataset_name == 'mg30':
 
-        test_scores, validation_scores = [], []
+        test_scores, validation_scores, alphas = [], [], []
         for _ in range(runs):
             model, hyperparameters = create_model(args, device)
             validation_score, test_score = test_mg30(model, use_last_state, device, args.initial_transients)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
-            hyperparameters['alpha'] = model.readout.alpha_
+            alphas.append(model.readout.alpha_)
 
+        best_index = np.argmin(validation_scores)
+        hyperparameters['alpha'] = alphas[best_index]
         save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
                      np.mean(test_scores), np.std(test_scores), 'nrmse', 'less')
 
@@ -503,7 +510,7 @@ if __name__ == '__main__':
                       args.initial_transients)
 
     elif dataset_name == 'lorenz96':
-        test_scores, validation_scores = [], []
+        test_scores, validation_scores, alphas = [], [], []
         for _ in range(runs):
             model, hyperparameters = create_model(args, device)
             validation_score, test_score = test_lorenz(args.N, args.F, args.dataset_size, args.lag, model,
@@ -512,20 +519,26 @@ if __name__ == '__main__':
                                                        args.testing_batch_size)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
-            hyperparameters['alpha'] = model.readout.alpha_
+            alphas.append(model.readout.alpha_)
+
+        best_index = np.argmin(validation_scores)
+        hyperparameters['alpha'] = alphas[best_index]
 
         save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
                      np.mean(test_scores), np.std(test_scores), 'nrmse', 'less')
 
     elif dataset_name == 'narma30':
 
-        test_scores, validation_scores = [], []
+        test_scores, validation_scores, alphas = [], [], []
         for _ in range(runs):
             model, hyperparameters = create_model(args, device)
             validation_score, test_score = test_narma30(model, use_last_state, device, args.initial_transients)
             test_scores.append(test_score)
             validation_scores.append(validation_score)
-            hyperparameters['alpha'] = model.readout.alpha_
+            alphas.append(model.readout.alpha_)
+
+        best_index = np.argmin(validation_scores)
+        hyperparameters['alpha'] = alphas[best_index]
 
         save_results(results_path, hyperparameters, np.mean(validation_scores), np.std(validation_scores),
                      np.mean(test_scores), np.std(test_scores), 'nrmse', 'less')
