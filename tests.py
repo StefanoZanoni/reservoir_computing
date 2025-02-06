@@ -57,7 +57,8 @@ elif tcmalloc_path:
 
 
 def generate_results_path(model_name, dataset_name, number_of_non_linear_layers, non_linear_units, memory_units, euler,
-                          legendre_memory, chebyshev_memory, just_memory, number_of_memory_layers=1):
+                          legendre_memory, chebyshev_memory, just_memory, legendre_input, fixed_input,
+                          number_of_memory_layers=1):
     if model_name == 'esn':
         base_path = f'./results/{model_name}/{dataset_name}/depth_{number_of_non_linear_layers}/'
     elif model_name == 'rmn':
@@ -67,10 +68,11 @@ def generate_results_path(model_name, dataset_name, number_of_non_linear_layers,
     elif model_name == 'rmn':
         memory_type = '_legendre' if legendre_memory else '_chebyshev' if chebyshev_memory else ''
         euler_suffix = '_euler' if euler else ''
+        input_type = '_li' if legendre_input else '_fi' if fixed_input else ''
         if just_memory:
-            return base_path + f'{memory_units}m{memory_type}/'
+            return base_path + f'{memory_units}m{memory_type}_in{input_type}/'
         else:
-            return base_path + f'{memory_units}m{memory_type}_{non_linear_units}nl{euler_suffix}/'
+            return base_path + f'{memory_units}m{memory_type}_{non_linear_units}nl{euler_suffix}_in{input_type}/'
     return base_path
 
 
@@ -412,6 +414,8 @@ if __name__ == '__main__':
     euler = args.euler
     legendre_memory = args.legendre_memory
     chebyshev_memory = args.chebyshev_memory
+    legendre_input = args.legendre_input
+    fixed_input = args.fixed_input_kernels
 
     runs = args.runs
 
@@ -435,7 +439,8 @@ if __name__ == '__main__':
         os.makedirs(f'./results/{model_name}/{dataset_name}')
 
     results_path = generate_results_path(model_name, dataset_name, number_of_non_linear_layers, non_linear_units,
-                                         memory_units, euler, legendre_memory, chebyshev_memory, just_memory, number_of_memory_layers)
+                                         memory_units, euler, legendre_memory, chebyshev_memory, just_memory,
+                                         legendre_input, fixed_input, number_of_memory_layers)
     if dataset_name == 'inubushi':
         results_path = f'{results_path[:-1]}_v_{round(args.v, 2)}'
 
