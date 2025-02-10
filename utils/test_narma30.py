@@ -22,7 +22,7 @@ def test_narma30(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, use_l
                                                       batch_size=1,
                                                       shuffle=False,
                                                       drop_last=False)
-    model.fit(training_dataloader, device, standardize=False, use_last_state=use_last_state,
+    model.fit(training_dataloader, device, standardize=True, use_last_state=use_last_state,
               disable_progress_bar=False)
 
     # validation
@@ -32,7 +32,7 @@ def test_narma30(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, use_l
                                                         batch_size=1,
                                                         shuffle=False,
                                                         drop_last=False)
-    validation_score = model.score(validation_dataloader, nrmse, device, standardize=False,
+    validation_score = model.score(validation_dataloader, nrmse, device, standardize=True,
                                    use_last_state=use_last_state, disable_progress_bar=False)
 
     # test
@@ -42,7 +42,7 @@ def test_narma30(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, use_l
                                                      batch_size=1,
                                                      shuffle=False,
                                                      drop_last=False)
-    test_score = model.score(testing_dataloader, nrmse, device, standardize=False, use_last_state=use_last_state,
+    test_score = model.score(testing_dataloader, nrmse, device, standardize=True, use_last_state=use_last_state,
                              disable_progress_bar=False)
 
     return validation_score, test_score
