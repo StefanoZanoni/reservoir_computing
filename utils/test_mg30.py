@@ -10,7 +10,8 @@ from utils.save_results import save_results
 def nrmse(y_pred: np.ndarray[np.float32], y_true: np.ndarray[np.float32]) -> float:
     # Normalized Root Mean Squared Error
     # where the normalization is done by the root-mean-square of the target trajectory
-    return np.sqrt(np.mean((y_pred - y_true) ** 2)) / np.sqrt(np.mean(y_true ** 2) + 1e-9)
+    y_true_temp = y_true.squeeze()
+    return np.sqrt(np.mean((y_pred - y_true_temp) ** 2)) / np.sqrt(np.mean(y_true_temp ** 2) + 1e-9)
 
 
 def test_mg30(model: DeepEchoStateNetwork | DeepReservoirMemoryNetwork, use_last_state: bool, device: torch.device,

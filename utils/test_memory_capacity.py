@@ -10,9 +10,10 @@ from reservoir_memory_network import DeepReservoirMemoryNetwork
 
 
 def determination_coefficient(y_pred: np.ndarray[np.float32], y_true: np.ndarray[np.float32]) -> float:
-    y_true_mean = np.mean(y_true)
-    numerator = np.sum((y_true - y_true_mean) * (y_pred - y_true_mean)) ** 2
-    denominator = np.sum((y_true - y_true_mean) ** 2) * np.sum((y_pred - y_true_mean) ** 2)
+    y_true_temp = y_true.squeeze()
+    y_true_mean = np.mean(y_true_temp)
+    numerator = np.sum((y_true_temp - y_true_mean) * (y_pred - y_true_mean)) ** 2
+    denominator = np.sum((y_true_temp - y_true_mean) ** 2) * np.sum((y_pred - y_true_mean) ** 2)
     return numerator / denominator
 
 
