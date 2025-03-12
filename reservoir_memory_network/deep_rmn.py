@@ -61,7 +61,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
                  just_memory: bool = False,
                  input_to_all_non_linear: bool = False,
                  input_to_all_memory: bool = False,
-                 memory_non_linear_connection_type: str = 'last_to_first',
                  ) -> None:
         """
         Initializes the Deep Reservoir Memory Network.
@@ -244,16 +243,6 @@ class DeepReservoirMemoryNetwork(torch.nn.Module):
         self._concatenate_memory_input = [input_to_all_memory and idx > 0 for idx in range(number_of_memory_layers)]
         self._concatenate_non_linear_input = [input_to_all_non_linear and idx > 0
                                               for idx in range(number_of_non_linear_layers)]
-        if memory_non_linear_connection_type not in ['last_to_first', 'all_to_first', 'last_to_all', 'all_to_all']:
-            raise ValueError('Invalid memory_non_linear_connection_type.')
-        if memory_non_linear_connection_type == 'last_to_first':
-            self._memory_non_linear_connection_type = 0
-        elif memory_non_linear_connection_type == 'all_to_first':
-            self._memory_non_linear_connection_type = 1
-        elif memory_non_linear_connection_type == 'last_to_all':
-            self._memory_non_linear_connection_type = 2
-        else:
-            self._memory_non_linear_connection_type = 3
 
     def _reset_state(self, batch_size: int, seq_len, device: torch.device) -> None:
         """
